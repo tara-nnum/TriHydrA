@@ -1,0 +1,42 @@
+# Python cache
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+notebooks/anaconda_projects/
+
+# Virtual environments
+.env
+.venv/
+venv/
+trihydra/
+
+# IDE/editor folders
+.idea/
+.vscode/
+
+# Data folders
+data/raw/
+data/processed/
+
+# Large data files
+*.p
+*.pkl
+*.pickle
+*.nc
+*.zarr/
+*.h5
+*.hdf5
+
+# Output files
+outputs/
+figures/
+plots/
+reports/
+*.csv
+
+# Allow small sample CSVs if needed
+!data/sample/*.csv
+
+# OS files
+.DS_Store
+Thumbs.db
