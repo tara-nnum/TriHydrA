@@ -8,7 +8,7 @@ notebooks/anaconda_projects/
 .env
 .venv/
 venv/
-trihydra/
+# trihydra/
 
 # IDE/editor folders
 .idea/
