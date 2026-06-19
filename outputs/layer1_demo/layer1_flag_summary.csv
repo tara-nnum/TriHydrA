@@ -1,0 +1,31 @@
+basin_id,series,check_group,check,status,flag,value,flagged_count,message
+GRDC_4123300,obs,behavioural,gradual_drift,completed,False,0.0,0,No gradual drift candidate detected.
+GRDC_4123300,obs,behavioural,low_variability,completed,True,21.0,21,Low variability uses 21-day rolling CV and rolling range; month-wise lower quantile = 0.01; spell-length threshold learned from series = 20.3 timestep(s); flagged timesteps = 21.
+GRDC_4123300,obs,behavioural,spike_dip,completed,False,0.0,0,Spike/dip candidates = 0; local deviation threshold learned from Q0.990; neighbour consistency threshold learned from Q0.500; minimum discharge threshold learned from Q0.900.
+GRDC_4123300,obs,behavioural,step_shift,completed,True,3.0,3,Step-shift candidates = 3; method = 14-day before/after rolling median; threshold learned from step-score Q0.995; requires stable before/after windows and persistent after-level.
+GRDC_4123300,obs,behavioural,zero_flow_regime,descriptor,False,0.0,0,Zero-flow ratio = 0.000; zero-flow count = 0; zero-flow spells = 0; longest zero-flow spell = 0 day(s); zero-flow months = [].
+GRDC_4123300,sim,behavioural,gradual_drift,completed,False,0.0,0,No gradual drift candidate detected.
+GRDC_4123300,sim,behavioural,low_variability,completed,False,0.0,0,Low variability uses 21-day rolling CV and rolling range; month-wise lower quantile = 0.01; spell-length threshold learned from series = 9.0 timestep(s); flagged timesteps = 0.
+GRDC_4123300,sim,behavioural,spike_dip,completed,True,2.0,2,Spike/dip candidates = 2; local deviation threshold learned from Q0.990; neighbour consistency threshold learned from Q0.500; minimum discharge threshold learned from Q0.900.
+GRDC_4123300,sim,behavioural,step_shift,completed,False,0.0,0,Step-shift candidates = 0; method = 14-day before/after rolling median; threshold learned from step-score Q0.995; requires stable before/after windows and persistent after-level.
+GRDC_4123300,sim,behavioural,zero_flow_regime,descriptor,False,0.0,0,Zero-flow ratio = 0.000; zero-flow count = 0; zero-flow spells = 0; longest zero-flow spell = 0 day(s); zero-flow months = [].
+GRDC_5304140,obs,behavioural,gradual_drift,completed,False,0.0,0,No gradual drift candidate detected.
+GRDC_5304140,obs,behavioural,low_variability,completed,True,19.0,19,Low variability uses 21-day rolling CV and rolling range; month-wise lower quantile = 0.01; spell-length threshold learned from series = 18.7 timestep(s); flagged timesteps = 19.
+GRDC_5304140,obs,behavioural,spike_dip,completed,False,0.0,0,Spike/dip candidates = 0; local deviation threshold learned from Q0.990; neighbour consistency threshold learned from Q0.500; minimum discharge threshold learned from Q0.900.
+GRDC_5304140,obs,behavioural,step_shift,completed,True,2.0,2,Step-shift candidates = 2; method = 14-day before/after rolling median; threshold learned from step-score Q0.995; requires stable before/after windows and persistent after-level.
+GRDC_5304140,obs,behavioural,zero_flow_regime,descriptor,False,0.0,0,Zero-flow ratio = 0.000; zero-flow count = 0; zero-flow spells = 0; longest zero-flow spell = 0 day(s); zero-flow months = [].
+GRDC_5304140,sim,behavioural,gradual_drift,completed,False,0.0,0,No gradual drift candidate detected.
+GRDC_5304140,sim,behavioural,low_variability,completed,True,5.0,5,Low variability uses 21-day rolling CV and rolling range; month-wise lower quantile = 0.01; spell-length threshold learned from series = 4.8 timestep(s); flagged timesteps = 5.
+GRDC_5304140,sim,behavioural,spike_dip,completed,False,0.0,0,Spike/dip candidates = 0; local deviation threshold learned from Q0.990; neighbour consistency threshold learned from Q0.500; minimum discharge threshold learned from Q0.900.
+GRDC_5304140,sim,behavioural,step_shift,completed,True,4.0,4,Step-shift candidates = 4; method = 14-day before/after rolling median; threshold learned from step-score Q0.995; requires stable before/after windows and persistent after-level.
+GRDC_5304140,sim,behavioural,zero_flow_regime,descriptor,False,0.0,0,Zero-flow ratio = 0.000; zero-flow count = 0; zero-flow spells = 0; longest zero-flow spell = 0 day(s); zero-flow months = [].
+GRDC_6341500,obs,behavioural,gradual_drift,completed,False,0.0,0,No gradual drift candidate detected.
+GRDC_6341500,obs,behavioural,low_variability,completed,True,11.0,11,Low variability uses 21-day rolling CV and rolling range; month-wise lower quantile = 0.01; spell-length threshold learned from series = 10.8 timestep(s); flagged timesteps = 11.
+GRDC_6341500,obs,behavioural,spike_dip,completed,False,0.0,0,Spike/dip candidates = 0; local deviation threshold learned from Q0.990; neighbour consistency threshold learned from Q0.500; minimum discharge threshold learned from Q0.900.
+GRDC_6341500,obs,behavioural,step_shift,completed,False,0.0,0,Step-shift candidates = 0; method = 14-day before/after rolling median; threshold learned from step-score Q0.995; requires stable before/after windows and persistent after-level.
+GRDC_6341500,obs,behavioural,zero_flow_regime,descriptor,False,0.0,0,Zero-flow ratio = 0.000; zero-flow count = 0; zero-flow spells = 0; longest zero-flow spell = 0 day(s); zero-flow months = [].
+GRDC_6341500,sim,behavioural,gradual_drift,completed,False,0.0,0,No gradual drift candidate detected.
+GRDC_6341500,sim,behavioural,low_variability,completed,True,9.0,9,Low variability uses 21-day rolling CV and rolling range; month-wise lower quantile = 0.01; spell-length threshold learned from series = 8.8 timestep(s); flagged timesteps = 9.
+GRDC_6341500,sim,behavioural,spike_dip,completed,True,1.0,1,Spike/dip candidates = 1; local deviation threshold learned from Q0.990; neighbour consistency threshold learned from Q0.500; minimum discharge threshold learned from Q0.900.
+GRDC_6341500,sim,behavioural,step_shift,completed,False,0.0,0,Step-shift candidates = 0; method = 14-day before/after rolling median; threshold learned from step-score Q0.995; requires stable before/after windows and persistent after-level.
+GRDC_6341500,sim,behavioural,zero_flow_regime,descriptor,False,0.0,0,Zero-flow ratio = 0.000; zero-flow count = 0; zero-flow spells = 0; longest zero-flow spell = 0 day(s); zero-flow months = [].
