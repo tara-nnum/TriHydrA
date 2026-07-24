@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_bb9cb7d38589ff644d5eb42cfd2f3668 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    <h4 style='position: fixed; top: 10px; left: 50px; z-index:9999; background:white; padding:8px;'>GRDC_6341500: context unavailable</h4>
+    
+            <div class="folium-map" id="map_bb9cb7d38589ff644d5eb42cfd2f3668" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_bb9cb7d38589ff644d5eb42cfd2f3668 = L.map(
+                "map_bb9cb7d38589ff644d5eb42cfd2f3668",
+                {
+                    center: [53.79, 13.31],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 6,
+  "zoomControl": true,
+  "preferCanvas": false,
+}
+
+                }
+            );
+            L.control.scale().addTo(map_bb9cb7d38589ff644d5eb42cfd2f3668);
+
+            
+
+        
+    
+            var tile_layer_229177e321689f19a1a07f94a37473c8 = L.tileLayer(
+                "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 20,
+  "maxNativeZoom": 20,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors \u0026copy; \u003ca href=\"https://carto.com/attributions\"\u003eCARTO\u003c/a\u003e",
+  "subdomains": "abcd",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_229177e321689f19a1a07f94a37473c8.addTo(map_bb9cb7d38589ff644d5eb42cfd2f3668);
+        
+    
+            var circle_21dfac782469b32cc313741e0e6a963b = L.circle(
+                [53.79, 13.31],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "red", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 74250.17441056957, "stroke": true, "weight": 1.5}
+            ).addTo(map_bb9cb7d38589ff644d5eb42cfd2f3668);
+        
+    
+            circle_21dfac782469b32cc313741e0e6a963b.bindTooltip(
+                `<div>
+                     Search radius: 74.3 km
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var marker_29c638d6ceb3aa81f393a7aa4b22b4bb = L.marker(
+                [53.79, 13.31],
+                {
+}
+            ).addTo(map_bb9cb7d38589ff644d5eb42cfd2f3668);
+        
+    
+            var icon_aaf040803a38add6cde659a3ca89f2b1 = L.AwesomeMarkers.icon(
+                {
+  "markerColor": "red",
+  "iconColor": "white",
+  "icon": "star",
+  "prefix": "glyphicon",
+  "extraClasses": "fa-rotate-0",
+}
+            );
+        
+    
+        var popup_eb21ef54cfbe70c067435390807cc0bc = L.popup({
+  "maxWidth": 350,
+});
+
+        
+            
+                var html_719c2160ebe81388972959aef89ff1b7 = $(`<div id="html_719c2160ebe81388972959aef89ff1b7" style="width: 100.0%; height: 100.0%;"><b>GRDC_6341500</b><br>Station: KLEMPENOW<br>Catchment: Peene<br>River: TOLLENSE<br>Area: 1,378.3 km²</div>`)[0];
+                popup_eb21ef54cfbe70c067435390807cc0bc.setContent(html_719c2160ebe81388972959aef89ff1b7);
+            
+        
+
+        marker_29c638d6ceb3aa81f393a7aa4b22b4bb.bindPopup(popup_eb21ef54cfbe70c067435390807cc0bc)
+        ;
+
+        
+    
+    
+            marker_29c638d6ceb3aa81f393a7aa4b22b4bb.bindTooltip(
+                `<div>
+                     TARGET: GRDC_6341500
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_29c638d6ceb3aa81f393a7aa4b22b4bb.setIcon(icon_aaf040803a38add6cde659a3ca89f2b1);
+            
+</script>
+</html>

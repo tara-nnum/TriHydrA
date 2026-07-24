@@ -1,0 +1,1 @@
+No suitable same-catchment candidate exists. This is a valid outcome, not a data-quality flag -- it just means this target has no usable context in the current network.
