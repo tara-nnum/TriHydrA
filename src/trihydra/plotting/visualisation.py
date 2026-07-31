@@ -76,6 +76,7 @@ except ImportError:
 # Only used for the one "temporary imputation, pending redesign" plot
 # below -- not used anywhere else in this file.
 from layer2_obs_ml_comparison import fill_obs_for_layer2
+from display_format import DISPLAY_DECIMALS, format_display_number
 
 
 # ==========================================================
@@ -87,6 +88,21 @@ OBS_COLOR = "#1971C2"
 MODEL_COLOR = "#E8590C"
 OBS_SHADE = "rgba(25, 113, 194, 0.15)"
 MODEL_SHADE = "rgba(232, 89, 12, 0.15)"
+def _format_display_number(value) -> str:
+    """Compatibility alias for the shared Layer 2 presentation formatter."""
+    return format_display_number(value)
+
+
+def _csv_display_number(value: float) -> str:
+    """Pandas ``float_format`` adapter using the shared display rule."""
+    return _format_display_number(value)
+
+
+def _apply_layer2_number_format(fig: go.Figure) -> go.Figure:
+    """Limit visible axis and hover numbers without altering source values."""
+    fig.update_xaxes(tickformat=".3~g", hoverformat=".3~g")
+    fig.update_yaxes(tickformat=".3~g", hoverformat=".3~g")
+    return fig
 
 # One unique colour per Layer 1 check (mentor feedback: basic and
 # behavioural checks need to be visually distinguishable from each
@@ -134,6 +150,19 @@ def _save(fig: go.Figure, path: Path, show: bool = False) -> None:
         fig.show()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.write_html(str(path), include_plotlyjs="cdn")
+
+
+def _save_csv_resilient(frame: pd.DataFrame, path: Path) -> Path:
+    """Write a CSV, using ``_updated`` when the existing file is open."""
+    try:
+        frame.to_csv(path, index=False, float_format=_csv_display_number)
+        return path
+    except PermissionError:
+        updated_path = path.with_name(f"{path.stem}_updated{path.suffix}")
+        frame.to_csv(
+            updated_path, index=False, float_format=_csv_display_number
+        )
+        return updated_path
 
 
 def _flow_duration_curve(series: pd.Series) -> tuple[np.ndarray, np.ndarray]:
@@ -210,6 +239,266 @@ def _obs_model_histogram(obs_values, model_values, title, x_label,
     return fig
 
 
+def _threshold_comparison_figure(
+    obs_series: pd.Series,
+    model_series: pd.Series,
+    obs_result,
+    model_result,
+    flow_kind: str,
+    threshold: float,
+    unit: str,
+    model_name: str,
+) -> go.Figure:
+    """Show a fixed raw-OBS threshold without ambiguous event shading."""
+    is_low = flow_kind == "low"
+    comparison = (
+        (lambda values: values <= threshold)
+        if is_low
+        else (lambda values: values >= threshold)
+    )
+    obs_mask = comparison(obs_series) & obs_series.notna()
+    model_mask = comparison(model_series) & model_series.notna()
+    metric_prefix = "low_flow" if is_low else "high_flow"
+    relation = "at or below" if is_low else "at or above"
+    percentile = "Q05" if is_low else "Q95"
+
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        row_heights=[0.78, 0.22],
+        specs=[[{"type": "xy"}], [{"type": "table"}]],
+        vertical_spacing=0.08,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=obs_series.index, y=obs_series.values, mode="lines",
+            name="OBS", line=dict(color=OBS_COLOR, width=0.8),
+        ),
+        row=1, col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=model_series.index, y=model_series.values, mode="lines",
+            name=model_name, line=dict(color=MODEL_COLOR, width=0.8),
+        ),
+        row=1, col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=obs_series.index[obs_mask],
+            y=obs_series.loc[obs_mask],
+            mode="markers",
+            name=f"OBS {flow_kind}-flow days",
+            marker=dict(color=OBS_COLOR, size=4, opacity=0.65),
+        ),
+        row=1, col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=model_series.index[model_mask],
+            y=model_series.loc[model_mask],
+            mode="markers",
+            name=f"{model_name} {flow_kind}-flow days",
+            marker=dict(color=MODEL_COLOR, size=4, opacity=0.65),
+        ),
+        row=1, col=1,
+    )
+    fig.add_hline(
+        y=threshold,
+        line_dash="dash",
+        line_color="#5F3DC4",
+        annotation_text=f"Raw OBS {percentile} = {threshold:.3f} {unit}",
+        row=1,
+        col=1,
+    )
+    metric_names = [
+        f"{metric_prefix}_days",
+        f"{metric_prefix}_event_count",
+        f"median_{metric_prefix}_duration",
+        f"maximum_{metric_prefix}_duration",
+    ]
+    labels = ["Days", "Consecutive events", "Median duration (days)", "Longest duration (days)"]
+    fig.add_trace(
+        go.Table(
+            header=dict(values=["Summary", "OBS", model_name]),
+            cells=dict(
+                values=[
+                    labels,
+                    [
+                        _format_display_number(obs_result.metrics.get(name))
+                        for name in metric_names
+                    ],
+                    [
+                        _format_display_number(model_result.metrics.get(name))
+                        for name in metric_names
+                    ],
+                ],
+            ),
+        ),
+        row=2,
+        col=1,
+    )
+    fig.update_layout(
+        title=(
+            f"{flow_kind.title()} flow — daily discharge {relation} the raw "
+            f"OBS {percentile} threshold"
+            f"<br><sub>One fixed OBS threshold is applied to both series; "
+            "temporary Layer 2 fills did not define it.</sub>"
+        ),
+        yaxis_title=f"Discharge ({unit})",
+        template=PLOT_TEMPLATE,
+        height=650,
+    )
+    return fig
+
+
+def _combined_limb_violin_figure(
+    obs_rising,
+    model_rising,
+    obs_recession,
+    model_recession,
+    unit: str,
+    model_name: str,
+) -> go.Figure:
+    """Compare rising and recession rates in one horizontal violin figure."""
+    series = {
+        "OBS rising": obs_rising.tables["rising_rates"]["rising_rate"].dropna(),
+        f"{model_name} rising": model_rising.tables["rising_rates"][
+            "rising_rate"
+        ].dropna(),
+        "OBS recession": obs_recession.tables["recession_rates"][
+            "recession_rate"
+        ].dropna(),
+        f"{model_name} recession": model_recession.tables["recession_rates"][
+            "recession_rate"
+        ].dropna(),
+    }
+    # Display the central 98% so a handful of extremes cannot flatten the
+    # useful distribution. Full values remain in calculation tables.
+    displayed = {}
+    for name, values in series.items():
+        if values.empty:
+            displayed[name] = values
+        else:
+            lower, upper = values.quantile([0.01, 0.99])
+            displayed[name] = values.loc[values.between(lower, upper)]
+
+    obs_rise_median = obs_rising.metrics.get("median_rising_rate", np.nan)
+    model_rise_median = model_rising.metrics.get("median_rising_rate", np.nan)
+    obs_recession_median = obs_recession.metrics.get(
+        "median_recession_rate", np.nan
+    )
+    model_recession_median = model_recession.metrics.get(
+        "median_recession_rate", np.nan
+    )
+    rise_difference = model_rise_median - obs_rise_median
+    recession_difference = model_recession_median - obs_recession_median
+    rise_word = (
+        "faster" if rise_difference > 0
+        else "slower" if rise_difference < 0
+        else "at the same rate"
+    )
+    recession_word = (
+        "faster" if model_recession_median < obs_recession_median
+        else "slower" if model_recession_median > obs_recession_median
+        else "at the same rate"
+    )
+    rate_unit = f"{unit}/day"
+    if unit.replace(" ", "") in {"mm/day", "mmday"}:
+        rate_unit = "mm/day²"
+
+    fig = go.Figure()
+    rows = [
+        ("OBS recession", "Recession — OBS", OBS_COLOR),
+        (f"{model_name} recession", f"Recession — {model_name}", MODEL_COLOR),
+        ("OBS rising", "Rising — OBS", OBS_COLOR),
+        (f"{model_name} rising", f"Rising — {model_name}", MODEL_COLOR),
+    ]
+    for source_name, row_name, color in rows:
+        fig.add_trace(
+            go.Violin(
+                x=displayed[source_name],
+                y=[row_name] * len(displayed[source_name]),
+                customdata=[
+                    _format_display_number(value)
+                    for value in displayed[source_name]
+                ],
+                name=row_name,
+                orientation="h",
+                side="both",
+                width=0.8,
+                line_color=color,
+                fillcolor=color,
+                opacity=0.55,
+                points=False,
+                meanline_visible=False,
+                hovertemplate=(
+                    f"{row_name}<br>Rate=%{{customdata}} {rate_unit}"
+                    "<extra></extra>"
+                ),
+                showlegend=False,
+            )
+        )
+
+    medians = [
+        (obs_recession_median, "Recession — OBS", OBS_COLOR),
+        (model_recession_median, f"Recession — {model_name}", MODEL_COLOR),
+        (obs_rise_median, "Rising — OBS", OBS_COLOR),
+        (model_rise_median, f"Rising — {model_name}", MODEL_COLOR),
+    ]
+    for median, row_name, color in medians:
+        fig.add_trace(
+            go.Scatter(
+                x=[median], y=[row_name], mode="markers",
+                marker=dict(color=color, size=11, symbol="diamond",
+                            line=dict(color="white", width=1)),
+                name=f"{row_name} typical rate",
+                hovertemplate=(
+                    f"{row_name}<br>Typical rate="
+                    f"{_format_display_number(median)} {rate_unit}"
+                    "<extra></extra>"
+                ),
+            )
+        )
+
+    fig.add_vline(
+        x=0, line_color="#343A40", line_width=1.5,
+        annotation_text="No daily change",
+    )
+    rise_text = (
+        f"Rising: OBS {_format_display_number(obs_rise_median)}, "
+        f"{model_name} {_format_display_number(model_rise_median)} {rate_unit}; "
+        f"{model_name} rises {rise_word} by "
+        f"{_format_display_number(abs(rise_difference))}."
+    )
+    recession_text = (
+        f"Recession: OBS {_format_display_number(obs_recession_median)}, "
+        f"{model_name} {_format_display_number(model_recession_median)} {rate_unit}; "
+        f"{model_name} recedes {recession_word} by "
+        f"{_format_display_number(abs(recession_difference))}."
+    )
+    fig.update_layout(
+        title=(
+            "Rising and recession limb rates"
+            f"<br><sub>{rise_text} {recession_text}</sub>"
+            "<br><sub>Left of zero = recession; right of zero = rising. "
+            "Wider violin sections mean that rate occurred more often. "
+            "Diamonds mark typical (median) rates. Display limited to the "
+            "central 98%; calculations retain all values.</sub>"
+        ),
+        xaxis_title=(
+            f"Daily discharge-rate change ({rate_unit}) — "
+            "faster recession ← 0 → faster rise"
+        ),
+        yaxis_title="",
+        violinmode="overlay",
+        template=PLOT_TEMPLATE,
+        height=600,
+        margin=dict(t=150),
+    )
+    return _apply_layer2_number_format(fig)
+
+
 # ==========================================================
 # LAYER 1: ONE COMBINED PLOT FOR THE 8 "SIMPLE" CHECKS
 # (5 basic + zero_flow_regime + low_variability + spike_dip)
@@ -231,37 +520,114 @@ def plot_layer1_combined(series: pd.Series, check_results: list[dict], series_ty
     """
     by_check = {r["check"]: r for r in check_results}
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=series.index, y=series.values, mode="lines",
-                              line=dict(color="#ADB5BD", width=1), name="Discharge"))
+    gap_rows = []
+    fig = make_subplots(
+        rows=2, cols=1,
+        row_heights=[0.78, 0.22],
+        specs=[[{"type": "xy"}], [{"type": "table"}]],
+        vertical_spacing=0.06,
+    )
+    fig.add_trace(go.Scatter(
+        x=series.index, y=series.values, mode="lines",
+        line=dict(color="#ADB5BD", width=1), name="Discharge",
+        hovertemplate="%{x|%Y-%m-%d}<br>Discharge=%{y:.4g}<extra></extra>",
+    ), row=1, col=1)
 
-    all_shapes = []
+    finite = series.dropna()
+    ymin = float(finite.min()) if not finite.empty else 0.0
+    ymax = float(finite.max()) if not finite.empty else 1.0
+    missing_result = by_check.get("missing_values", {})
+    long_result = by_check.get("long_gaps", {})
+    long_intervals = long_result.get("long_gap_intervals", []) or []
+    long_keys = {(x["start"], x["end"]) for x in long_intervals}
 
-    # --- gap-style checks: filled spans ---
-    for check in ["missing_values", "long_gaps", "zero_flow_regime", "low_variability"]:
-        result = by_check.get(check)
-        if result is None:
+    # Isolated/short missing intervals: hoverable black vertical lines.
+    first_missing = True
+    for interval in missing_result.get("internal_intervals", []) or []:
+        if (interval["start"], interval["end"]) in long_keys:
             continue
+        start, end = pd.Timestamp(interval["start"]), pd.Timestamp(interval["end"])
+        for timestamp in pd.date_range(start, end, freq="D"):
+            fig.add_trace(go.Scatter(
+                x=[timestamp, timestamp], y=[ymin, ymax], mode="lines",
+                line=dict(color="rgba(33,37,41,0.65)", width=1),
+                name="Missing observation",
+                legendgroup="missing",
+                showlegend=first_missing,
+                hovertemplate=(
+                    f"Missing observation<br>{timestamp:%Y-%m-%d}<extra></extra>"
+                ),
+            ), row=1, col=1)
+            first_missing = False
+        gap_rows.append({
+            "type": "Missing interval", **interval,
+        })
 
-        if check == "zero_flow_regime":
-            # This check is a whole-record descriptor (ratio, not a
-            # per-day list) -- recompute the zero-flow mask directly
-            # from the series for plotting purposes only.
-            rounded = series.round(3)
-            timestamps = list(series.index[rounded == 0])
-        else:
-            timestamps = result.get("flagged_timestamps", [])
+    # Long gaps: calm transparent-red spans plus a hover target.
+    first_long = True
+    for interval in long_intervals:
+        start, end = pd.Timestamp(interval["start"]), pd.Timestamp(interval["end"])
+        fig.add_vrect(
+            x0=start, x1=end + pd.Timedelta(days=1),
+            fillcolor="rgba(214,51,108,0.16)", line_width=0,
+            row=1, col=1,
+        )
+        midpoint = start + (end - start) / 2
+        fig.add_trace(go.Scatter(
+            x=[midpoint], y=[ymax], mode="markers",
+            marker=dict(
+                size=10, color="rgba(214,51,108,0.35)", symbol="square",
+            ),
+            name="Long gap", legendgroup="long_gap", showlegend=first_long,
+            hovertemplate=(
+                f"Long gap<br>{start:%Y-%m-%d} to {end:%Y-%m-%d}"
+                f"<br>{interval['missing_count']} missing observation(s)"
+                "<extra></extra>"
+            ),
+        ), row=1, col=1)
+        first_long = False
+        gap_rows.append({"type": "Long gap", **interval})
 
-        spans = _group_into_spans(timestamps)
-        color = LAYER1_CHECK_COLORS[check]
-        all_shapes.extend(_shapes_for_spans(spans, _hex_to_rgba(color, 0.18)))
-        # Dummy trace so this check gets its own legend entry (shapes
-        # don't appear in the legend on their own).
-        fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers",
-                                  marker=dict(size=10, color=color, symbol="square"),
-                                  name=CHECK_LABELS_L1[check]))
-
-    fig.update_layout(shapes=all_shapes)
+    # Descriptor/period checks are drawn only when they have visible evidence.
+    zero_result = by_check.get("zero_flow_regime", {})
+    zero_dates = series.index[series.round(3).eq(0)]
+    if len(zero_dates):
+        fig.add_trace(go.Scatter(
+            x=zero_dates, y=series.reindex(zero_dates), mode="markers",
+            marker=dict(size=7, color=LAYER1_CHECK_COLORS["zero_flow_regime"]),
+            name="Zero flow",
+        ), row=1, col=1)
+    low_result = by_check.get("low_variability", {})
+    for i, period in enumerate(low_result.get("low_variability_periods", []) or []):
+        start = pd.Timestamp(period["start"])
+        end = pd.Timestamp(period["end"])
+        fig.add_vrect(
+            x0=start, x1=end,
+            fillcolor=_hex_to_rgba(LAYER1_CHECK_COLORS["low_variability"], 0.20),
+            line_width=0, row=1, col=1,
+        )
+        dates = series.loc[start:end].index
+        fig.add_trace(go.Scatter(
+            x=dates,
+            y=series.reindex(dates).values,
+            mode="markers",
+            marker=dict(
+                size=7,
+                color=LAYER1_CHECK_COLORS["low_variability"],
+                line=dict(width=0.7, color="#1B5E2F"),
+            ),
+            name="Low-variability period",
+            legendgroup="low_variability",
+            showlegend=i == 0,
+            hovertemplate=(
+                f"Low-variability period<br>{start:%Y-%m-%d} to {end:%Y-%m-%d}"
+                f"<br>Duration: {period['calendar_duration_days']} days"
+                f"<br>Mean rolling CV: {period.get('mean_rolling_cv', float('nan')):.3f}"
+                f"<br>Mean rolling range: {period.get('mean_rolling_range', float('nan')):.3f}"
+                "<br>Discharge: %{y:.3f}<extra></extra>"
+            ),
+        ), row=1, col=1)
+        gap_rows.append({"type": "Low variability", **period})
 
     # --- point-style checks: small, semi-transparent markers ---
     for check in ["negative_discharge", "duplicate_timestamps", "timestep_consistency"]:
@@ -274,7 +640,7 @@ def plot_layer1_combined(series: pd.Series, check_results: list[dict], series_ty
             marker=dict(size=FLAG_MARKER_SIZE, color=LAYER1_CHECK_COLORS[check],
                         opacity=FLAG_MARKER_OPACITY, line=dict(width=0)),
             name=CHECK_LABELS_L1[check],
-        ))
+        ), row=1, col=1)
 
     # --- spike/dip: same check colour, shape distinguishes spike vs dip ---
     spike_dip_result = by_check.get("spike_dip")
@@ -285,18 +651,48 @@ def plot_layer1_combined(series: pd.Series, check_results: list[dict], series_ty
             if not ts:
                 continue
             idx = pd.to_datetime(ts)
+            hover = [
+                (
+                    f"{kind.title()} candidate<br>{d['timestamp']}"
+                    f"<br>Discharge: {d.get('candidate_value', d.get('flagged_value')):.3f}"
+                    f"<br>Recovery score: {d.get('recovery_score', float('nan')):.3f}"
+                    f"<br>Candidate score: {d.get('raw_score', float('nan')):.3f}"
+                )
+                for t, d in details.items() if d["type"] == kind
+            ]
             fig.add_trace(go.Scatter(
                 x=idx, y=series.reindex(idx).values, mode="markers",
-                marker=dict(size=FLAG_MARKER_SIZE, color=LAYER1_CHECK_COLORS["spike_dip"],
-                            opacity=FLAG_MARKER_OPACITY, symbol=symbol, line=dict(width=0)),
+                marker=dict(size=11, color="#D6336C", opacity=0.95,
+                            symbol=symbol, line=dict(width=1, color="#7B2C46")),
                 name=f"Spike / dip ({kind})",
-            ))
+                text=hover, hovertemplate="%{text}<extra></extra>",
+            ), row=1, col=1)
+
+    if gap_rows:
+        table = pd.DataFrame(gap_rows)
+        headers = ["Type", "Start", "End", "Missing", "Calendar days"]
+        cells = [
+            table.get("type", pd.Series(dtype=object)),
+            pd.to_datetime(table.get("start", pd.Series(dtype=object))).dt.strftime("%Y-%m-%d"),
+            pd.to_datetime(table.get("end", pd.Series(dtype=object))).dt.strftime("%Y-%m-%d"),
+            table.get("missing_count", pd.Series(dtype=object)),
+            table.get("calendar_duration_days", pd.Series(dtype=object)),
+        ]
+    else:
+        headers = ["Missing-data information"]
+        cells = [["No internal missing intervals."]]
+    fig.add_trace(go.Table(
+        header=dict(values=headers, fill_color="#E9ECEF", align="left"),
+        cells=dict(values=cells, align="left"),
+    ), row=2, col=1)
 
     fig.update_layout(
         title=f"Layer 1 combined checks ({series_type})",
-        xaxis_title="Date", yaxis_title="Discharge",
-        template=PLOT_TEMPLATE, height=480,
+        template=PLOT_TEMPLATE, height=690,
+        margin=dict(t=70, b=30),
     )
+    fig.update_xaxes(title_text="Date", row=1, col=1)
+    fig.update_yaxes(title_text="Discharge (source units)", row=1, col=1)
     return fig
 
 
@@ -306,29 +702,122 @@ def _hex_to_rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {alpha})"
 
 
+def _format_p_value(value) -> str:
+    """Format human-facing p-values without displaying false numerical zero."""
+    if value is None or pd.isna(value):
+        return "n/a"
+    value = float(value)
+    return "<0.001" if value < 0.001 else f"{value:.3f}"
+
+
 # ==========================================================
 # LAYER 1: STEP SHIFT (separate plot)
 # ==========================================================
 
 def plot_step_shift(series: pd.Series, step_shift_result: dict, series_type: str) -> go.Figure:
-    fig = go.Figure()
+    fig = make_subplots(
+        rows=2, cols=1, row_heights=[0.68, 0.32],
+        specs=[[{"type": "xy"}], [{"type": "table"}]],
+        vertical_spacing=0.07,
+    )
     fig.add_trace(go.Scatter(x=series.index, y=series.values, mode="lines",
-                              line=dict(color="#4C6EF5", width=1), name="Discharge"))
+                              line=dict(color="#4C6EF5", width=1), name="Discharge"),
+                  row=1, col=1)
 
-    for regime in step_shift_result.get("regime_summary", []):
+    regime_colors = ["#2F9E44", "#1971C2", "#7048E8", "#0B7285", "#5C940D"]
+    for i, regime in enumerate(step_shift_result.get("regime_summary", [])):
         start, end = pd.Timestamp(regime["start"]), pd.Timestamp(regime["end"])
-        fig.add_trace(go.Scatter(x=[start, end], y=[regime["mean_flow"]] * 2, mode="lines",
-                                  line=dict(color="#2F9E44", width=3), showlegend=False))
+        color = regime_colors[i % len(regime_colors)]
+        fig.add_vrect(
+            x0=start, x1=end + pd.offsets.MonthEnd(1),
+            fillcolor=_hex_to_rgba(color, 0.055), line_width=0,
+            row=1, col=1,
+        )
+        fig.add_trace(go.Scatter(
+            x=[start, end], y=[regime["median"]] * 2, mode="lines",
+            line=dict(color=color, width=3),
+            name=(
+                f"Regime {regime.get('continuous_period', 1)}."
+                f"{regime.get('regime', i + 1)}"
+            ),
+            showlegend=False,
+            hovertemplate=(
+                f"Regime {regime.get('continuous_period', 1)}."
+                f"{regime.get('regime', i + 1)}"
+                f"<br>{start:%Y-%m-%d} to {end:%Y-%m-%d}"
+                f"<br>Calendar months: {regime['calendar_month_count']}"
+                f"<br>Valid days: {regime['valid_day_count']}"
+                f"<br>Q25: {regime['q25']:.3f}"
+                f"<br>Median: {regime['median']:.3f}"
+                f"<br>Q75: {regime['q75']:.3f}<extra></extra>"
+            ),
+        ), row=1, col=1)
+        midpoint = start + (end - start) / 2
+        fig.add_trace(go.Scatter(
+            x=[midpoint], y=[regime["median"]], mode="markers",
+            marker=dict(size=16, color=_hex_to_rgba(color, 0.01)),
+            showlegend=False,
+            hovertemplate=(
+                f"Regime {regime.get('continuous_period', 1)}."
+                f"{regime.get('regime', i + 1)}"
+                f"<br>{start:%Y-%m-%d} to {end:%Y-%m-%d}"
+                f"<br>Q25 / median / Q75: {regime['q25']:.3f} / "
+                f"{regime['median']:.3f} / {regime['q75']:.3f}"
+                "<extra></extra>"
+            ),
+        ), row=1, col=1)
 
     for boundary in step_shift_result.get("regime_boundaries", []):
         boundary_date = pd.Timestamp(boundary["boundary_timestamp"])
-        fig.add_vline(x=boundary_date, line_dash="dash",
-                       line_color="#E8590C" if boundary.get("robust") else "grey")
-        fig.add_annotation(x=boundary_date, y=series.max(), text=f"p={boundary['p_value']:.2e}",
-                            showarrow=False, yshift=10, font=dict(size=9))
+        color = "#8B1E3F" if boundary.get("confirmed") else "rgba(108,117,125,0.45)"
+        fig.add_vline(x=boundary_date, line_width=1.2, line_color=color,
+                      row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=[boundary_date], y=[series.max()],
+            mode="markers",
+            marker=dict(size=10, color=color, symbol="line-ns-open"),
+            showlegend=False,
+            hovertemplate=(
+                f"Monthly regime-boundary candidate<br>{boundary_date:%Y-%m-%d}"
+                f"<br>Median effect: {boundary['standardised_median_effect']:.3f}"
+                f"<br>p-value: {_format_p_value(boundary.get('p_value'))}"
+                f"<br>Decision: {boundary['decision']}<extra></extra>"
+            ),
+        ), row=1, col=1)
 
-    fig.update_layout(title=f"Step shift ({series_type})<br><sub>{step_shift_result.get('message', '')}</sub>",
-                       xaxis_title="Date", yaxis_title="Discharge", template=PLOT_TEMPLATE, height=440)
+    boundaries = step_shift_result.get("regime_boundaries", [])
+    if boundaries:
+        fig.add_trace(go.Table(
+            header=dict(values=[
+                "Boundary", "Continuous period", "Before median", "After median",
+                "Effect", "p-value", "Decision",
+            ], fill_color="#E9ECEF", align="left"),
+            cells=dict(values=[
+                [pd.Timestamp(x["boundary_timestamp"]).strftime("%Y-%m-%d") for x in boundaries],
+                [x.get("continuous_period") for x in boundaries],
+                [f"{x['before_median']:.3f}" for x in boundaries],
+                [f"{x['after_median']:.3f}" for x in boundaries],
+                [f"{x['standardised_median_effect']:.3f}" for x in boundaries],
+                [_format_p_value(x.get("p_value")) for x in boundaries],
+                [x["decision"] for x in boundaries],
+            ], align="left"),
+        ), row=2, col=1)
+    else:
+        fig.add_trace(go.Table(
+            header=dict(values=["Step-shift result"], fill_color="#E9ECEF"),
+            cells=dict(values=[[step_shift_result.get("message", "No boundaries.")]]),
+        ), row=2, col=1)
+
+    fig.update_layout(
+        title=(
+            f"Step shift ({series_type}) — "
+            f"{step_shift_result.get('confirmed_boundary_count', 0)} confirmed / "
+            f"{step_shift_result.get('consolidated_candidate_count', 0)} consolidated candidates"
+        ),
+        template=PLOT_TEMPLATE, height=760,
+    )
+    fig.update_xaxes(title_text="Date", row=1, col=1)
+    fig.update_yaxes(title_text="Discharge (source units)", row=1, col=1)
     return fig
 
 
@@ -370,22 +859,126 @@ def _recompute_gradual_drift_trend(series: pd.Series, min_daily_values_per_month
     return daily_flow, monthly_analysis, sen_line
 
 
-def plot_gradual_drift_trend(series: pd.Series, gradual_drift_result: dict, series_type: str) -> go.Figure:
-    daily_flow, monthly_analysis, sen_line = _recompute_gradual_drift_trend(series)
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=daily_flow.index, y=daily_flow.values, mode="lines",
-                              line=dict(color="#4C6EF5", width=0.6), opacity=0.4, name="Daily discharge"))
-    if not monthly_analysis.empty:
-        fig.add_trace(go.Scatter(x=monthly_analysis.index, y=monthly_analysis.values, mode="lines+markers",
-                                  line=dict(color="#2F9E44", width=1), marker=dict(size=3), name="Monthly median"))
-    if not sen_line.empty:
-        fig.add_trace(go.Scatter(x=sen_line.index, y=sen_line.values, mode="lines",
-                                  line=dict(color="#E8590C", width=3), name="Seasonal Sen drift line"))
-
-    fig.update_layout(title=f"Gradual drift -- trend ({series_type})<br><sub>{gradual_drift_result.get('message', '')}</sub>",
-                       xaxis_title="Date", yaxis_title="Discharge", template=PLOT_TEMPLATE, height=420)
+def plot_gradual_drift(series: pd.Series, result: dict, series_type: str) -> go.Figure:
+    """Combine segmented trends, segment FDCs, gap context, and a result table."""
+    fig = make_subplots(
+        rows=2, cols=2,
+        specs=[[{"type": "xy", "colspan": 2}, None],
+               [{"type": "xy"}, {"type": "table"}]],
+        row_heights=[0.62, 0.38],
+        vertical_spacing=0.12,
+        horizontal_spacing=0.10,
+        subplot_titles=("Discharge and segment trends", "Segment flow-duration curves", "Trend results"),
+    )
+    fig.add_trace(go.Scatter(
+        x=series.index, y=series.values, mode="lines",
+        line=dict(color="#A5B4FC", width=0.7), opacity=0.55,
+        name="Daily discharge",
+    ), row=1, col=1)
+    colors = ["#2F9E44", "#1971C2", "#7048E8", "#E8590C", "#0B7285"]
+    completed = []
+    for i, segment in enumerate(result.get("drift_segments", []) or []):
+        color = colors[i % len(colors)]
+        dates = pd.to_datetime(segment.get("monthly_dates", []))
+        values = segment.get("monthly_values", [])
+        if len(dates):
+            fig.add_trace(go.Scatter(
+                x=dates, y=values, mode="markers",
+                marker=dict(size=4, color=color, opacity=0.45),
+                name=f"Monthly medians — continuous record period {i + 1}",
+                visible="legendonly",
+            ), row=1, col=1)
+        sen_dates = pd.to_datetime(segment.get("sen_line_dates", []))
+        if len(sen_dates):
+            fig.add_trace(go.Scatter(
+                x=sen_dates, y=segment["sen_line_values"], mode="lines",
+                line=dict(color=color, width=4),
+                name=f"Straight Sen trend — continuous record period {i + 1}",
+                hovertemplate=(
+                    f"Continuous record period {i + 1}"
+                    f"<br>Annual Sen slope: {segment['sen_slope_per_year']:.3f}"
+                    f"<br>Estimated total change: {segment['estimated_total_change']:.3f}"
+                    f"<br>Relative total change: "
+                    f"{segment.get('estimated_relative_change_percent', float('nan')):.3f}%"
+                    f"<br>{segment.get('interpretation', '')}<extra></extra>"
+                ),
+            ), row=1, col=1)
+        start, end = pd.Timestamp(segment["start"]), pd.Timestamp(segment["end"])
+        segment_flow = series.loc[start:end].dropna()
+        if not segment_flow.empty:
+            exceedance, flow = _flow_duration_curve(segment_flow)
+            fig.add_trace(go.Scatter(
+                x=exceedance, y=flow, mode="lines",
+                line=dict(color=color, width=2),
+                name=f"FDC — continuous record period {i + 1}",
+                legendgroup=f"segment-{i}",
+            ), row=2, col=1)
+        if segment.get("execution_status") == "completed":
+            completed.append(segment)
+    for gap in result.get("unresolved_gaps", []) or []:
+        fig.add_vrect(
+            x0=pd.Timestamp(gap["start"]), x1=pd.Timestamp(gap["end"]),
+            fillcolor="rgba(214,51,108,0.16)", line_width=0,
+            row=1, col=1,
+        )
+    segments = result.get("drift_segments", []) or []
+    if segments:
+        fig.add_trace(go.Table(
+            header=dict(values=[
+                "Record period", "Dates", "Years", "Interpretation",
+                "Annual Sen slope", "Total change", "Reference median",
+                "Relative total change (%)", "p-value",
+            ], fill_color="#E9ECEF", align="left"),
+            cells=dict(values=[
+                [f"Continuous period {i}" for i in range(1, len(segments) + 1)],
+                [
+                    f"{pd.Timestamp(x['start']):%Y-%m-%d} – "
+                    f"{pd.Timestamp(x['end']):%Y-%m-%d}"
+                    for x in segments
+                ],
+                [f"{x.get('record_years', 0):.3f}" for x in segments],
+                [x.get("interpretation", "not calculated") for x in segments],
+                [
+                    f"{x['sen_slope_per_year']:.3f}" if x.get("sen_slope_per_year") is not None else "n/a"
+                    for x in segments
+                ],
+                [
+                    f"{x['estimated_total_change']:.3f}"
+                    if x.get("estimated_total_change") is not None else "n/a"
+                    for x in segments
+                ],
+                [
+                    f"{x['reference_flow']:.3f}"
+                    if x.get("reference_flow") is not None else "n/a"
+                    for x in segments
+                ],
+                [
+                    f"{x['estimated_relative_change_percent']:.3f}"
+                    if x.get("estimated_relative_change_percent") is not None else "n/a"
+                    for x in segments
+                ],
+                [_format_p_value(x.get("p_value")) for x in segments],
+            ], align="left"),
+        ), row=2, col=2)
+    else:
+        fig.add_trace(go.Table(
+            header=dict(values=["Gradual-drift result"], fill_color="#E9ECEF"),
+            cells=dict(values=[[result.get("message", "Not calculated")]]),
+        ), row=2, col=2)
+    fig.update_layout(
+        title=f"Gradual drift ({series_type}) — segmented at unresolved gaps",
+        template=PLOT_TEMPLATE, height=850,
+    )
+    fig.update_yaxes(title_text="Discharge (source units)", row=1, col=1)
+    fig.update_xaxes(title_text="Date", row=1, col=1)
+    fig.update_xaxes(title_text="Exceedance (%)", row=2, col=1)
+    fig.update_yaxes(title_text="Discharge (log scale)", type="log", row=2, col=1)
     return fig
+
+
+def plot_gradual_drift_trend(series: pd.Series, gradual_drift_result: dict, series_type: str) -> go.Figure:
+    """Compatibility wrapper returning the new combined gradual-drift figure."""
+    return plot_gradual_drift(series, gradual_drift_result, series_type)
 
 
 def plot_gradual_drift_fdc(series: pd.Series, series_type: str) -> go.Figure:
@@ -435,6 +1028,22 @@ def generate_layer1_visuals(
     output_root = Path(output_root) if output_root is not None else IO_OUTPUT_ROOT
     station_dir = output_root / station_id / "layer1"
     station_dir.mkdir(parents=True, exist_ok=True)
+    # Remove obsolete split drift products after migration to one combined
+    # gradual-drift figure. Targets are explicit station-output files.
+    for series_label in ["obs", model_name]:
+        for legacy_name in [
+            f"{series_label}_gradual_drift_trend.html",
+            f"{series_label}_gradual_drift_fdc.html",
+        ]:
+            legacy_path = station_dir / legacy_name
+            if legacy_path.is_file():
+                legacy_path.unlink()
+    # Detail tables are conditional. Remove previous versions before writing
+    # this run so a now-empty finding cannot leave a stale CSV behind.
+    for table_name in layer1_diagnostics.get("detail_tables", {}):
+        stale_table = station_dir / f"layer1_{table_name}.csv"
+        if stale_table.is_file():
+            stale_table.unlink()
 
     raw_results = layer1_diagnostics["raw_results"]
 
@@ -449,14 +1058,18 @@ def generate_layer1_visuals(
                   station_dir / f"{series_type}_step_shift.html", show=show)
 
         if "gradual_drift" in by_check:
-            _save(plot_gradual_drift_trend(series, by_check["gradual_drift"], series_type),
-                  station_dir / f"{series_type}_gradual_drift_trend.html", show=show)
-            _save(plot_gradual_drift_fdc(series, series_type),
-                  station_dir / f"{series_type}_gradual_drift_fdc.html", show=show)
+            _save(plot_gradual_drift(series, by_check["gradual_drift"], series_type),
+                  station_dir / f"{series_type}_gradual_drift.html", show=show)
 
     layer1_diagnostics["eda_summary"].to_csv(station_dir / "layer1_eda_summary.csv", index=False)
     layer1_diagnostics["summary_all"].to_csv(station_dir / "layer1_summary_all.csv", index=False)
     layer1_diagnostics["summary_flagged"].to_csv(station_dir / "layer1_summary_flagged.csv", index=False)
+    for table_name, table in layer1_diagnostics.get("detail_tables", {}).items():
+        if not table.empty:
+            table.round(3).to_csv(
+                station_dir / f"layer1_{table_name}.csv",
+                index=False,
+            )
 
     return station_dir
 
@@ -574,7 +1187,7 @@ def _hydrograph_with_events(obs_series, model_series, obs_events, model_events, 
 
 def generate_layer2_visuals(
     obs_series: pd.Series,
-    ml_series: pd.Series,
+    ml_series: Optional[pd.Series],
     layer2_diagnostics: dict,
     station_id: str = "station",
     model_name: str = "AIFL",
@@ -600,35 +1213,121 @@ def generate_layer2_visuals(
 
     obs_results = layer2_diagnostics["obs_results"]
     model_results = layer2_diagnostics["model_results"]
-    obs_clean, model_clean = obs_series.dropna(), ml_series.dropna()
+    obs_clean = layer2_diagnostics.get("obs_analysis", obs_series).dropna()
+    unit = layer2_diagnostics.get("threshold_provenance", {}).get(
+        "unit", "source units"
+    )
+
+    # OBS-only is a supported Layer 2 mode. Comparison plots have no honest
+    # model trace to draw, so save an OBS overview plus the 13-signature table
+    # and imputation audit instead of fabricating or duplicating a model.
+    if model_results is None:
+        overview = go.Figure()
+        overview.add_trace(
+            go.Scatter(
+                x=obs_clean.index,
+                y=obs_clean.values,
+                mode="lines",
+                name="OBS temporary analysis copy",
+                line=dict(color=OBS_COLOR, width=0.8),
+            )
+        )
+        imputation_log = layer2_diagnostics.get("imputation_log", pd.DataFrame())
+        obs_fills = (
+            imputation_log[imputation_log["series"] == "obs"]
+            if not imputation_log.empty
+            else pd.DataFrame()
+        )
+        if not obs_fills.empty:
+            overview.add_trace(
+                go.Scatter(
+                    x=obs_fills["timestamp"],
+                    y=obs_fills["temporary_value"],
+                    mode="markers",
+                    name="Temporarily imputed for Layer 2",
+                    marker=dict(color="#C92A2A", size=5, symbol="x"),
+                    customdata=obs_fills[["method"]],
+                    hovertemplate=(
+                        "Date=%{x}<br>Temporary value=%{y:.3f}"
+                        "<br>Method=%{customdata[0]}<extra></extra>"
+                    ),
+                )
+            )
+        overview.update_layout(
+            title="Layer 2 OBS analysis copy (temporary fills explicitly marked)",
+            xaxis_title="Date",
+            yaxis_title="Discharge",
+            template=PLOT_TEMPLATE,
+            height=480,
+        )
+        _save(overview, station_dir / "obs_analysis_overview.html", show=show)
+        _save_csv_resilient(
+            layer2_diagnostics["signature_comparison"],
+            station_dir / "layer2_signature_diagnostics.csv",
+        )
+        _save_csv_resilient(
+            imputation_log,
+            station_dir / "layer2_temporary_imputation_log.csv",
+        )
+        _save_csv_resilient(
+            layer2_diagnostics["percentile_diagnostics"],
+            station_dir / "layer2_percentile_diagnostics.csv",
+        )
+        return station_dir
+
+    model_clean = layer2_diagnostics.get("model_analysis", ml_series).dropna()
 
     figures = {}
 
     # --- data-quality context (new, from the notebook audit) ---
-    figures["missing_values"] = plot_missing_values(obs_series)
-    figures["temporary_fill_highlight"] = plot_temporary_fill_highlight(obs_series)
+    figures["missing_values"] = plot_missing_values(
+        layer2_diagnostics.get("obs_aligned", obs_series)
+    )
+    figures["temporary_fill_highlight"] = plot_temporary_fill_highlight(
+        layer2_diagnostics.get("obs_aligned", obs_series)
+    )
 
     # --- flow magnitude: FDC ---
     obs_x, obs_y = _flow_duration_curve(obs_clean)
     model_x, model_y = _flow_duration_curve(model_clean)
     figures["flow_magnitude"] = _obs_model_lines(
         obs_x, obs_y, model_x, model_y, title="Flow magnitude -- flow duration curve",
-        x_label="Percent of time flow equalled or exceeded (%)", y_label="Discharge (log scale)",
+        x_label="Exceedance probability: percent of days this flow was equalled or exceeded",
+        y_label=f"Discharge ({unit}, log scale)",
         model_name=model_name, y_log=True,
+    )
+    figures["flow_magnitude"].update_layout(
+        title=(
+            "Flow-duration comparison — distribution of high, typical and low discharge"
+            "<br><sub>Left: rare high flows | Centre: typical flows | "
+            "Right: frequently equalled low flows. Vertical separation shows magnitude bias.</sub>"
+        )
+    )
+    figures["flow_magnitude"].add_vrect(
+        x0=0, x1=10, fillcolor="rgba(214, 51, 108, 0.07)", line_width=0,
+        annotation_text="High flows", annotation_position="top left",
+    )
+    figures["flow_magnitude"].add_vrect(
+        x0=10, x1=90, fillcolor="rgba(25, 113, 194, 0.04)", line_width=0,
+        annotation_text="Typical flows", annotation_position="top left",
+    )
+    figures["flow_magnitude"].add_vrect(
+        x0=90, x1=100, fillcolor="rgba(47, 158, 68, 0.07)", line_width=0,
+        annotation_text="Low flows", annotation_position="top left",
     )
 
     # --- low / high flow ---
-    figures["low_flow"] = _hydrograph_with_events(
-        obs_clean, model_clean, obs_results["low_flow"].tables["low_flow_events"],
-        model_results["low_flow"].tables["low_flow_events"],
-        title=f"Low flow (OBS threshold = {obs_results['low_flow'].metrics.get('low_flow_threshold', float('nan')):.2f})",
-        model_name=model_name,
+    figures["low_flow"] = _threshold_comparison_figure(
+        obs_clean, model_clean, obs_results["low_flow"],
+        model_results["low_flow"], "low",
+        obs_results["low_flow"].metrics["low_flow_threshold"],
+        unit, model_name,
     )
-    figures["high_flow"] = _hydrograph_with_events(
-        obs_clean, model_clean, obs_results["high_flow"].tables["high_flow_events"],
-        model_results["high_flow"].tables["high_flow_events"],
-        title=f"High flow (OBS threshold = {obs_results['high_flow'].metrics.get('high_flow_threshold', float('nan')):.2f})",
-        model_name=model_name,
+    figures["high_flow"] = _threshold_comparison_figure(
+        obs_clean, model_clean, obs_results["high_flow"],
+        model_results["high_flow"], "high",
+        obs_results["high_flow"].metrics["high_flow_threshold"],
+        unit, model_name,
     )
 
     # --- annual maximum / zero flow ---
@@ -674,25 +1373,48 @@ def generate_layer2_visuals(
 
     # --- flashiness / autocorrelation ---
     obs_fl, model_fl = obs_results["flashiness"].tables["annual_flashiness"], model_results["flashiness"].tables["annual_flashiness"]
-    figures["flashiness"] = _obs_model_lines(obs_fl["year"], obs_fl["flashiness_index"], model_fl["year"], model_fl["flashiness_index"],
-                                              "Annual flashiness index (Richards-Baker)", "Year", "Flashiness index", model_name=model_name)
+    obs_rbi = obs_results["flashiness"].metrics["whole_record_flashiness_index"]
+    model_rbi = model_results["flashiness"].metrics["whole_record_flashiness_index"]
+    rbi_difference = model_rbi - obs_rbi
+    rbi_percent = (rbi_difference / obs_rbi * 100) if obs_rbi else np.nan
+    rbi_direction = "more" if rbi_difference > 0 else "less" if rbi_difference < 0 else "the same"
+    figures["flashiness"] = _obs_model_lines(
+        obs_fl["year"], obs_fl["flashiness_index"],
+        model_fl["year"], model_fl["flashiness_index"],
+        (
+            "Annual Richards–Baker flashiness index"
+            f"<br><sub>Whole record: OBS={obs_rbi:.3f}, {model_name}={model_rbi:.3f}. "
+            f"{model_name} represents {abs(rbi_percent):.3f}% {rbi_direction} "
+            "day-to-day flashiness. Higher values mean larger daily changes "
+            "relative to total flow.</sub>"
+        ),
+        "Year", "Richards–Baker flashiness index", model_name=model_name,
+    )
 
     obs_acf, model_acf = obs_results["autocorrelation"].tables["autocorrelation_function"], model_results["autocorrelation"].tables["autocorrelation_function"]
     acf_fig = _obs_model_lines(obs_acf["lag"], obs_acf["autocorrelation"], model_acf["lag"], model_acf["autocorrelation"],
                                 "Autocorrelation function", "Lag (days)", "Autocorrelation", model_name=model_name)
     acf_fig.add_hline(y=1 / np.e, line_dash="dot", line_color="grey", annotation_text="1/e decorrelation threshold")
+    obs_decay = obs_results["autocorrelation"].metrics.get("decorrelation_lag")
+    model_decay = model_results["autocorrelation"].metrics.get("decorrelation_lag")
+    acf_fig.update_layout(
+        title=(
+            "Discharge memory — autocorrelation by lag"
+            f"<br><sub>First lag at or below 1/e: OBS={obs_decay} days, "
+            f"{model_name}={model_decay} days. This reference estimates how "
+            "long discharge retains temporal memory; it is not a warning threshold.</sub>"
+        )
+    )
     figures["autocorrelation"] = acf_fig
 
-    # --- rising / recession limb ---
-    figures["rising_limb"] = _obs_model_histogram(
-        obs_results["rising_limb"].tables["rising_rates"]["rising_rate"].dropna(),
-        model_results["rising_limb"].tables["rising_rates"]["rising_rate"].dropna(),
-        "Rising-limb rate distribution", "Rising rate (discharge/day)", model_name=model_name,
-    )
-    figures["recession_limb"] = _obs_model_histogram(
-        obs_results["recession_limb"].tables["recession_rates"]["recession_rate"].dropna(),
-        model_results["recession_limb"].tables["recession_rates"]["recession_rate"].dropna(),
-        "Recession-limb rate distribution", "Recession rate (discharge/day)", model_name=model_name,
+    # --- rising and recession limbs: one zero-centred horizontal comparison ---
+    figures["limb_rates"] = _combined_limb_violin_figure(
+        obs_results["rising_limb"],
+        model_results["rising_limb"],
+        obs_results["recession_limb"],
+        model_results["recession_limb"],
+        unit,
+        model_name,
     )
 
     # --- peaks (zoomed to recent years, plus peak markers) ---
@@ -717,45 +1439,19 @@ def generate_layer2_visuals(
                              xaxis_title="Date", yaxis_title="Discharge", template=PLOT_TEMPLATE, height=440)
     figures["peaks"] = peaks_fig
 
-    # --- threshold-based / derivative-sign events (zoomed) ---
-    figures["threshold_event_hydrographs"] = _hydrograph_with_events(
-        obs_clean, model_clean, obs_results["threshold_event_hydrographs"].tables["events"],
-        model_results["threshold_event_hydrographs"].tables["events"],
-        title="Threshold-based (Q95) event hydrographs", model_name=model_name,
-        start_col="event_start", end_col="event_end", peak_col="peak_flow",
-        zoom_years=event_zoom_years,
-    )
-    figures["derivative_event_hydrographs"] = _hydrograph_with_events(
-        obs_clean, model_clean, obs_results["derivative_event_hydrographs"].tables["events"],
-        model_results["derivative_event_hydrographs"].tables["events"],
-        title="Derivative-sign event hydrographs", model_name=model_name,
-        start_col="event_start", end_col="event_end", peak_col="peak_flow",
-        zoom_years=event_zoom_years,
-    )
-
-    # --- flashiness persistence ---
-    obs_fp = obs_results["flashiness_persistence"].tables["rolling_flashiness_autocorrelation"]
-    model_fp = model_results["flashiness_persistence"].tables["rolling_flashiness_autocorrelation"]
-    fp_fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                            subplot_titles=("Rolling flashiness", "Rolling lag-1 autocorrelation"))
-    fp_fig.add_trace(go.Scatter(x=obs_fp.index, y=obs_fp["rolling_flashiness"], mode="lines",
-                                 line=dict(color=OBS_COLOR, width=1), name="OBS"), row=1, col=1)
-    fp_fig.add_trace(go.Scatter(x=model_fp.index, y=model_fp["rolling_flashiness"], mode="lines",
-                                 line=dict(color=MODEL_COLOR, width=1), name=model_name), row=1, col=1)
-    fp_fig.add_trace(go.Scatter(x=obs_fp.index, y=obs_fp["rolling_ac1"], mode="lines",
-                                 line=dict(color=OBS_COLOR, width=1), showlegend=False), row=2, col=1)
-    fp_fig.add_trace(go.Scatter(x=model_fp.index, y=model_fp["rolling_ac1"], mode="lines",
-                                 line=dict(color=MODEL_COLOR, width=1), showlegend=False), row=2, col=1)
-    fp_fig.update_layout(title="Flashiness persistence over time", template=PLOT_TEMPLATE, height=560)
-    figures["flashiness_persistence"] = fp_fig
+    # High-flow threshold events are already communicated in the redesigned
+    # high-flow figure. Retain their calculated table but do not duplicate the
+    # same information in another ambiguous hydrograph.
 
     for name, fig in figures.items():
+        _apply_layer2_number_format(fig)
         _save(fig, station_dir / f"{name}.html", show=show)
 
-    layer2_diagnostics["compact_comparison"].to_csv(station_dir / "layer2_compact_comparison.csv", index=False)
-    layer2_diagnostics["full_comparison"].to_csv(station_dir / "layer2_summary_all.csv", index=False)
-    layer2_diagnostics["full_comparison_flagged"].to_csv(station_dir / "layer2_summary_flagged.csv", index=False)
-    layer2_diagnostics["percentile_diagnostics"].to_csv(station_dir / "layer2_percentile_diagnostics.csv", index=False)
+    _save_csv_resilient(layer2_diagnostics["compact_comparison"], station_dir / "layer2_compact_comparison.csv")
+    _save_csv_resilient(layer2_diagnostics["signature_comparison"], station_dir / "layer2_signature_diagnostics.csv")
+    _save_csv_resilient(layer2_diagnostics["imputation_log"], station_dir / "layer2_temporary_imputation_log.csv")
+    _save_csv_resilient(layer2_diagnostics["full_comparison"], station_dir / "layer2_summary_all.csv")
+    _save_csv_resilient(layer2_diagnostics["percentile_diagnostics"], station_dir / "layer2_percentile_diagnostics.csv")
 
     return station_dir
 
@@ -824,9 +1520,8 @@ def generate_layer3_visuals(
     results and save it into <IO_OUTPUT_ROOT>/<station_id>/layer3/.
     Takes `layer3_diagnostics` (the dict returned by
     diagnostics.run_layer3_diagnostics) rather than recomputing
-    anything, and `candidate_series` (already-loaded candidate
-    discharge, from nc_loader.py via layer3.py) since this file never
-    loads discharge data itself.
+    anything, and `candidate_series` already loaded through
+    ``trihydra.io``. This file never loads discharge data itself.
 
     The gauge-network maps are a separate concern -- see mapviz.py's
     generate_layer3_maps -- since they're a different rendering
@@ -840,10 +1535,17 @@ def generate_layer3_visuals(
 
     if candidate_series:
         fig = plot_context_period(target_series, candidate_series, station_id, start=start, end=end)
+        _apply_layer2_number_format(fig)
         _save(fig, station_dir / "context_comparison.html", show=show)
 
-    layer3_diagnostics["context_summary"].to_csv(station_dir / "layer3_context_summary.csv", index=False)
-    layer3_diagnostics["comparison_table"].to_csv(station_dir / "layer3_comparison_table.csv", index=False)
+    _save_csv_resilient(
+        layer3_diagnostics["context_summary"],
+        station_dir / "layer3_context_summary.csv",
+    )
+    _save_csv_resilient(
+        layer3_diagnostics["comparison_table"],
+        station_dir / "layer3_comparison_table.csv",
+    )
     (station_dir / "layer3_interpretation.txt").write_text(layer3_diagnostics["interpretation"])
 
     return station_dir

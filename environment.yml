@@ -1,11 +1,45 @@
 name: trihydra
+
+# Keep one consistent solver channel. Mixing defaults and conda-forge produced
+# binary incompatibilities in the previous local environment.
 channels:
-  - defaults
+  - conda-forge
+  - nodefaults
+
 dependencies:
+  # Runtime
   - python=3.11
-  - matplotlib
+  - numpy
+  - pandas
+  - scipy
   - xarray
+  - statsmodels
+  - ruptures
+
+  # NetCDF, Zarr, HDF and tabular data support
+  - netcdf4
+  - h5netcdf
+  - h5py
+  - zarr
   - pyarrow
-  - jupyter
+
+  # Interactive diagnostics and maps
+  - plotly
+  - folium
+  - matplotlib
+
+  # Configuration groundwork
+  - pydantic>=2
+  - pyyaml
+
+  # Notebook and development tools
+  - jupyterlab
   - ipykernel
-prefix: C:\Users\taran\anaconda3\envs\trihydra
+  - pytest
+
+  # PyMannKendall is used by the Layer 1 gradual-drift check. Installing it
+  # through pip inside this otherwise conda-forge environment is portable
+  # across Windows, Linux and macOS.
+  - pip
+  - pip:
+      - pymannkendall

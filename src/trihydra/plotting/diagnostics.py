@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 import numpy as np
 import pandas as pd
@@ -52,8 +52,9 @@ from layer2_hydrological_signatures import (
     percentile_diagnostic,
 )
 from layer2_obs_ml_comparison import (
+    build_primary_signature_comparison,
     compare_all_scalar_metrics,
-    extract_compact_signature_profile,
+    calculate_obs_ml_signature_results,
 )
 
 
@@ -90,8 +91,6 @@ LAYER2_CHECK_LABELS = {
     "recession_limb": "Recession limb",
     "peaks": "Peaks",
     "threshold_event_hydrographs": "Threshold-based events",
-    "derivative_event_hydrographs": "Derivative-sign events",
-    "flashiness_persistence": "Flashiness persistence",
 }
 
 
@@ -142,7 +141,7 @@ def _describe_check_value(check_result: dict, record_length: int) -> str:
     value = check_result.get("value")
 
     if value is None:
-        return "n/a"
+        return "Not calculated"
 
     def pct_of_record(count: float) -> str:
         if not record_length:
@@ -168,17 +167,31 @@ def _describe_check_value(check_result: dict, record_length: int) -> str:
     if check == "step_shift":
         return f"{value:.0f} confirmed regime boundary(ies)"
     if check == "gradual_drift":
-        return f"estimated change = {value:.2f}% over the record"
+        return f"largest detected period change = {value:.3f}%"
 
     return str(value)
 
 
-def _run_layer1_checks(series: pd.Series, series_type: str) -> list[dict]:
-    results = run_basic_checks(series)
+def _run_layer1_checks(
+    series: pd.Series,
+    series_type: str,
+    config: Mapping[str, Mapping[str, Any]] | None = None,
+) -> list[dict]:
+    results = run_basic_checks(series, config=config)
     for r in results:
         r.setdefault("check_group", "basic")
+        r.setdefault("execution_status", "completed")
+        r.setdefault(
+            "finding_status",
+            "candidate_detected" if r.get("flag") else "passed",
+        )
+        r.setdefault("reason_skipped", None)
         r["series_type"] = series_type
-    results.extend(run_behavioural_checks(series, series_type=series_type))
+    results.extend(
+        run_behavioural_checks(
+            series, series_type=series_type, config=config
+        )
+    )
     return results
 
 
@@ -191,6 +204,9 @@ def _layer1_summary_rows(results: list[dict], record_length: int) -> list[dict]:
             "check_label": LAYER1_CHECK_LABELS.get(r["check"], r["check"]),
             "check_group": r.get("check_group", "basic"),
             "status": r.get("status"),
+            "execution_status": r.get("execution_status", "completed"),
+            "finding_status": r.get("finding_status"),
+            "reason_skipped": r.get("reason_skipped"),
             "flag": r["flag"],
             "value_description": _describe_check_value(r, record_length),
             "message": r.get("message", ""),
@@ -198,13 +214,63 @@ def _layer1_summary_rows(results: list[dict], record_length: int) -> list[dict]:
     return rows
 
 
+def _layer1_detail_tables(raw_results: dict) -> dict[str, pd.DataFrame]:
+    """Flatten structured check evidence into human-readable tables."""
+    rows_by_table: dict[str, list[dict]] = {
+        "missing_intervals": [],
+        "long_gaps": [],
+        "spike_dip_candidates": [],
+        "step_shift_boundaries": [],
+        "step_shift_regimes": [],
+        "gradual_drift_segments": [],
+        "gradual_drift_gaps": [],
+        "zero_flow_spells": [],
+        "low_variability_periods": [],
+    }
+    mapping = {
+        "missing_values": [("internal_intervals", "missing_intervals")],
+        "long_gaps": [("long_gap_intervals", "long_gaps")],
+        "spike_dip": [("candidate_details", "spike_dip_candidates")],
+        "step_shift": [
+            ("regime_boundaries", "step_shift_boundaries"),
+            ("regime_summary", "step_shift_regimes"),
+        ],
+        "gradual_drift": [
+            ("drift_segments", "gradual_drift_segments"),
+            ("unresolved_gaps", "gradual_drift_gaps"),
+        ],
+        "zero_flow_regime": [("zero_flow_spells", "zero_flow_spells")],
+        "low_variability": [
+            ("low_variability_periods", "low_variability_periods"),
+        ],
+    }
+    for series_type, results in raw_results.items():
+        for result in results:
+            for field, table_name in mapping.get(result["check"], []):
+                for item in result.get(field, []) or []:
+                    row = {"series_type": series_type}
+                    row.update(item)
+                    # Plot-support arrays belong in raw machine results, not CSV.
+                    row.pop("monthly_dates", None)
+                    row.pop("monthly_values", None)
+                    row.pop("trend_dates", None)
+                    row.pop("trend_values", None)
+                    row.pop("flow_duration_curve", None)
+                    rows_by_table[table_name].append(row)
+    return {
+        name: pd.DataFrame(rows)
+        for name, rows in rows_by_table.items()
+    }
+
+
 def run_layer1_diagnostics(
     obs_series: pd.Series,
     sim_series: Optional[pd.Series] = None,
     model_name: str = "AIFL",
+    config: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict:
     """
-    Run all 10 Layer 1 checks on `obs_series` (and, if given,
+    Run the currently enabled Layer 1 checks on `obs_series` (and, if given,
     `sim_series` tagged with `model_name` -- not just "sim", since
     future work may evaluate more than one model) and return every
     table visualisation.py needs, plus the raw per-check result dicts
@@ -220,22 +286,28 @@ def run_layer1_diagnostics(
     record_length = len(obs_clean) if not obs_clean.empty else len(obs_series)
 
     eda_rows = [eda_summary_table(obs_series, "obs")]
-    raw_results = {"obs": _run_layer1_checks(obs_series, "obs")}
+    raw_results = {
+        "obs": _run_layer1_checks(obs_series, "obs", config=config)
+    }
     summary_rows = _layer1_summary_rows(raw_results["obs"], record_length)
 
     if sim_series is not None:
         eda_rows.append(eda_summary_table(sim_series, model_name))
-        raw_results[model_name] = _run_layer1_checks(sim_series, model_name)
+        raw_results[model_name] = _run_layer1_checks(
+            sim_series, model_name, config=config
+        )
         summary_rows.extend(_layer1_summary_rows(raw_results[model_name], record_length))
 
     summary_all = pd.DataFrame(summary_rows)
     summary_flagged = summary_all[summary_all["flag"]].reset_index(drop=True)
+    detail_tables = _layer1_detail_tables(raw_results)
 
     return {
         "eda_summary": pd.concat(eda_rows, ignore_index=True),
         "summary_all": summary_all,
         "summary_flagged": summary_flagged,
         "raw_results": raw_results,
+        "detail_tables": detail_tables,
     }
 
 
@@ -312,49 +384,72 @@ def percentile_diagnostic_table(obs_results: dict) -> pd.DataFrame:
 
 def run_layer2_diagnostics(
     obs_series: pd.Series,
-    ml_series: pd.Series,
+    ml_series: Optional[pd.Series] = None,
     model_name: str = "AIFL",
-    relative_tolerance_percent: float = 10.0,
+    fill_method: str = "seasonal_climatology",
+    layer1_obs_profile: Optional[dict] = None,
+    discharge_unit: str = "source units",
+    fill_window_days: int = 15,
+    fill_min_samples: int = 5,
+    signature_kwargs: Optional[dict[str, Any]] = None,
 ) -> dict:
     """
-    Run all 15 Layer 2 signature checks on `obs_series` vs. `ml_series`
-    (labelled `model_name`) and return every table visualisation.py
-    needs, plus the raw SignatureResult dicts so visualisation.py
-    never has to recompute a signature itself.
+    Run all 13 Layer 2 signature checks on OBS and, when supplied, compare
+    a model over exactly the same period. Missing values are retained in the
+    aligned records and filled only in temporary calculation copies.
 
     Returns a dict with:
-      compact_comparison       : DataFrame, ~22-metric dashboard comparison
-      full_comparison          : DataFrame, ~165-metric full comparison
-      full_comparison_flagged  : DataFrame, full_comparison filtered to flag == True
+      signature_comparison     : DataFrame, exactly 13 signature rows
+      full_comparison          : optional detailed scalar comparison
       percentile_diagnostics   : DataFrame, this-station-vs-its-own-history table
       obs_results, model_results : raw {group_name: SignatureResult}
     """
-    obs_clean = obs_series.dropna()
-    ml_clean = ml_series.dropna()
+    calculated = calculate_obs_ml_signature_results(
+        obs_series,
+        ml_series,
+        fill_method=fill_method,
+        layer1_obs_profile=layer1_obs_profile,
+        discharge_unit=discharge_unit,
+        fill_window_days=fill_window_days,
+        fill_min_samples=fill_min_samples,
+        signature_kwargs=signature_kwargs,
+    )
+    obs_results = calculated["obs_results"]
+    model_results = calculated["ml_results"]
+    primary_comparison = build_primary_signature_comparison(
+        obs_results,
+        model_results,
+        model_name=model_name,
+        coverage=calculated["coverage"],
+    )
 
-    obs_results = calculate_all_hydrological_signatures(obs_clean)
-    model_results = calculate_all_hydrological_signatures(ml_clean)
-
-    obs_compact = extract_compact_signature_profile(obs_results)
-    model_compact = extract_compact_signature_profile(model_results)
-    compact_comparison = pd.DataFrame([
-        {"metric": k, "obs_value": v, f"{model_name}_value": model_compact.get(k)}
-        for k, v in obs_compact.items()
-    ])
-
-    full_comparison = compare_all_scalar_metrics(
-        basin_id="station",
-        obs_results=obs_results,
-        ml_results=model_results,
-        relative_tolerance_percent=relative_tolerance_percent,
-    ).rename(columns={"ml_value": f"{model_name}_value"})
-
-    full_comparison_flagged = full_comparison[full_comparison["flag"]].reset_index(drop=True)
+    if model_results is None:
+        full_comparison = pd.DataFrame()
+    else:
+        full_comparison = compare_all_scalar_metrics(
+            basin_id="station",
+            obs_results=obs_results,
+            ml_results=model_results,
+            relative_tolerance_percent=float("inf"),
+        ).rename(columns={"ml_value": f"{model_name}_value"})
+        full_comparison = full_comparison.drop(
+            columns=["comparison_distance", "flag"], errors="ignore"
+        )
+        full_comparison["comparison_status"] = "descriptive_only"
 
     return {
-        "compact_comparison": compact_comparison,
+        "mode": calculated["mode"],
+        "coverage": calculated["coverage"],
+        "imputation_log": calculated["imputation_log"],
+        "threshold_provenance": calculated["threshold_provenance"],
+        "obs_aligned": calculated["obs_aligned"],
+        "model_aligned": calculated["ml_aligned"],
+        "obs_analysis": calculated["obs_analysis"],
+        "model_analysis": calculated["ml_analysis"],
+        "signature_comparison": primary_comparison,
+        # Compatibility alias: this is now intentionally the same 13-row table.
+        "compact_comparison": primary_comparison,
         "full_comparison": full_comparison,
-        "full_comparison_flagged": full_comparison_flagged,
         "percentile_diagnostics": percentile_diagnostic_table(obs_results),
         "obs_results": obs_results,
         "model_results": model_results,
@@ -406,10 +501,13 @@ def run_layer3_diagnostics(
         "target_gauge_id": candidate_result["target_id"],
         "catchment": candidate_result["target"].get("Catchment"),
         "river": candidate_result["target"].get("River"),
-        "search_radius_km": candidate_result["radius_km"],
+        "candidate_selection_method": candidate_result["selection_method"],
         "context_status": status,
         "candidate_count": len(candidates),
         "same_river_candidate_count": int(candidates["same_river"].sum()) if not candidates.empty else 0,
+        "best_area_similarity": (
+            candidates["area_similarity"].max() if not candidates.empty else np.nan
+        ),
     }])
 
     return {

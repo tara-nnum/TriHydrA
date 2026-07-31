@@ -1,10 +1,12 @@
 """
 layer1.py
 
-The single entry point for Layer 1: run_layer1(obs_series, sim_series, ...).
+The single entry point for configured Layer 1 execution:
+run_layer1(obs_series, sim_series, ...).
 
 Orchestrates:
-  1. trihydra.plotting.diagnostics.run_layer1_diagnostics    (all 10 checks, tables)
+  1. trihydra.plotting.diagnostics.run_layer1_diagnostics
+     (the currently enabled checks and their tables)
   2. trihydra.plotting.visualisation.generate_layer1_visuals (every plot, shown + saved)
 
 This file deliberately contains no check logic and no plotting logic of
@@ -18,7 +20,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 import pandas as pd
 
@@ -44,9 +46,10 @@ def run_layer1(
     model_name: str = "AIFL",
     show: bool = True,
     output_root: Optional[Path] = None,
+    config: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict:
     """
-    Run all 10 Layer 1 checks on `obs_series` (and, if given,
+    Run the currently enabled Layer 1 checks on `obs_series` (and, if given,
     `sim_series`, tagged `model_name` -- not just "sim", since future
     work may evaluate more than one model), display every plot inline
     and save it, and return the full diagnostics dict for further
@@ -68,7 +71,12 @@ def run_layer1(
         l1 = run_layer1(obs, sim, station_id="GRDC_4123300", model_name="AIFL")
         l1["summary_flagged"]
     """
-    diagnostics = run_layer1_diagnostics(obs_series, sim_series, model_name=model_name)
+    diagnostics = run_layer1_diagnostics(
+        obs_series,
+        sim_series,
+        model_name=model_name,
+        config=config,
+    )
 
     output_path = generate_layer1_visuals(
         obs_series,

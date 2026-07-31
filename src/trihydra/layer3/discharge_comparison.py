@@ -14,8 +14,6 @@ nothing here needs to change.
 
 from __future__ import annotations
 
-from typing import Callable, Optional
-
 import numpy as np
 import pandas as pd
 
@@ -99,7 +97,7 @@ def high_flow_agreement(target: pd.Series, neighbour: pd.Series, lag_days: int =
 def compare_target_with_candidates(
     target_series: pd.Series,
     candidates: pd.DataFrame,
-    candidate_series_loader: Callable[[str], pd.Series],
+    candidate_series: dict[str, pd.Series],
     lag_days: int = 7,
 ) -> pd.DataFrame:
     """
@@ -107,10 +105,8 @@ def compare_target_with_candidates(
     candidate gauge in `candidates` (as returned by
     gauge_network.find_context_candidates).
 
-    `candidate_series_loader(gauge_id) -> pd.Series` is a callback, not
-    a fixed data source -- layer3.py supplies one backed by
-    nc_loader.py today, so this function stays agnostic about where
-    candidate discharge actually comes from.
+    ``candidate_series`` contains already-ingested raw observations.
+    This calculation module never opens a source file.
 
     Raw discharge magnitudes are not directly comparable across gauges
     with different catchment areas -- correlation and event agreement
@@ -120,10 +116,12 @@ def compare_target_with_candidates(
 
     for _, candidate in candidates.iterrows():
         candidate_id = candidate["gauge_id"]
-        candidate_series = candidate_series_loader(candidate_id)
+        if candidate_id not in candidate_series:
+            continue
+        current_candidate_series = candidate_series[candidate_id]
 
         aligned = pd.concat(
-            [target_series.rename("target"), candidate_series.rename("candidate")],
+            [target_series.rename("target"), current_candidate_series.rename("candidate")],
             axis=1,
         ).dropna()
 
@@ -137,8 +135,9 @@ def compare_target_with_candidates(
             "candidate_gauge_id": candidate_id,
             "candidate_station_name": candidate.get("StationName"),
             "same_river": candidate["same_river"],
-            "distance_km": candidate["distance_km"],
             "candidate_area_km2": candidate["area_km2"],
+            "area_ratio_to_target": candidate["area_ratio_to_target"],
+            "area_similarity": candidate["area_similarity"],
             "overlap_start": aligned.index.min(),
             "overlap_end": aligned.index.max(),
             "overlap_days": len(aligned),

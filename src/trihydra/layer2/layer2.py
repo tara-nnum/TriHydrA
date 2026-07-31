@@ -4,8 +4,8 @@ layer2.py
 The single entry point for Layer 2: run_layer2(obs_series, ml_series, ...).
 
 Orchestrates:
-  1. trihydra.plotting.diagnostics.run_layer2_diagnostics    (all 15 signature
-     checks for OBS and model, plus the compact/full/flagged/percentile tables)
+  1. trihydra.plotting.diagnostics.run_layer2_diagnostics    (all 13 signature
+     checks for OBS, plus model comparison only when a model is supplied)
   2. trihydra.plotting.visualisation.generate_layer2_visuals (every plot,
      shown + saved)
 
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -41,18 +41,26 @@ from src.trihydra.plotting.visualisation import generate_layer2_visuals
 
 def run_layer2(
     obs_series: pd.Series,
-    ml_series: pd.Series,
+    ml_series: Optional[pd.Series] = None,
     station_id: str = "station",
     model_name: str = "AIFL",
     show: bool = True,
     output_root: Optional[Path] = None,
-    relative_tolerance_percent: float = 10.0,
+    fill_method: str = "seasonal_climatology",
+    layer1_obs_profile: Optional[dict] = None,
+    discharge_unit: str = "source units",
+    fill_window_days: int = 15,
+    fill_min_samples: int = 5,
+    signature_kwargs: Optional[dict[str, Any]] = None,
 ) -> dict:
     """
-    Run all 15 Layer 2 signature checks on `obs_series` vs. `ml_series`
-    (labelled `model_name` -- not just "sim"), display every plot
-    inline and save it, and return the full diagnostics dict for
-    further inspection in the same notebook cell.
+    Run all 13 Layer 2 signature checks. When `ml_series` is supplied,
+    OBS and model are restricted to the same period before comparison.
+    When it is omitted, Layer 2 runs OBS-only without a comparison.
+
+    Missing values are filled only in temporary analysis copies. The
+    returned diagnostics include the original-missing counts, fill method,
+    and a timestamp-level imputation log; the caller's Series is unchanged.
 
     show=True (the default here) displays each plot as it's built --
     the right default for interactive notebook use. Pass show=False
@@ -61,21 +69,26 @@ def run_layer2(
     Saves to: io/output/<station_id>/layer2/
 
     Returns the same dict as diagnostics.run_layer2_diagnostics
-    (compact_comparison, full_comparison, full_comparison_flagged,
-    percentile_diagnostics, obs_results, model_results), with one
+    (13-row signature_comparison, optional detailed comparison,
+    percentile diagnostics, imputation provenance, and raw results), with one
     extra key, "output_path", pointing at the folder everything was
     saved into.
 
     Example
     -------
         l2 = run_layer2(obs, ml, station_id="GRDC_4123300", model_name="AIFL")
-        l2["full_comparison_flagged"]
+        l2["signature_comparison"]
     """
     diagnostics = run_layer2_diagnostics(
         obs_series,
         ml_series,
         model_name=model_name,
-        relative_tolerance_percent=relative_tolerance_percent,
+        fill_method=fill_method,
+        layer1_obs_profile=layer1_obs_profile,
+        discharge_unit=discharge_unit,
+        fill_window_days=fill_window_days,
+        fill_min_samples=fill_min_samples,
+        signature_kwargs=signature_kwargs,
     )
 
     output_path = generate_layer2_visuals(

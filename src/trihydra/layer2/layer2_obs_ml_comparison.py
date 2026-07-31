@@ -23,6 +23,9 @@ from layer2_hydrological_signatures import (
     calculate_threshold_event_hydrographs,
     signatures_to_summary_table,
 )
+from comparison_preparation import prepare_layer2_inputs
+from display_format import format_display_number
+from src.trihydra.layer1.behaviour_profile import calculate_profile
 
 
 
@@ -468,12 +471,14 @@ def extract_signature_profile(
 
 def calculate_obs_ml_signature_results(
     obs_series: pd.Series,
-    ml_series: pd.Series,
-    fill_method: str = "none",
+    ml_series: Optional[pd.Series] = None,
+    fill_method: str = "seasonal_climatology",
     fill_window_days: int = 15,
     fill_min_samples: int = 5,
     use_obs_thresholds_for_ml: bool = True,
     signature_kwargs: Optional[dict[str, Any]] = None,
+    layer1_obs_profile: Optional[dict[str, Any]] = None,
+    discharge_unit: str = "source units",
 ) -> dict[str, Any]:
     """
     Align OBS/ML and calculate the complete signature set for both.
@@ -486,57 +491,83 @@ def calculate_obs_ml_signature_results(
         {} if signature_kwargs is None else dict(signature_kwargs)
     )
 
-    obs_aligned, ml_aligned = prepare_obs_ml_series(obs_series, ml_series)
-    obs_analysis = fill_obs_for_layer2(
-        obs_aligned,
-        method=fill_method,
+    prepared = prepare_layer2_inputs(
+        obs_series,
+        ml_series,
+        fill_method=fill_method,
         window_days=fill_window_days,
         min_samples=fill_min_samples,
     )
+    obs_aligned = prepared.obs_aligned
+    ml_aligned = prepared.model_aligned
+    obs_analysis = prepared.obs_analysis
+
+    # Low/high-flow definitions must originate from raw Layer 1 information,
+    # never from temporarily imputed Layer 2 values. If the caller has not
+    # passed the Layer 1 profile, use the same Layer 1 profile function on the
+    # raw aligned OBS record as an explicit compatibility fallback.
+    if layer1_obs_profile is None:
+        threshold_profile = calculate_profile(
+            prepared.obs_aligned, series_name="obs"
+        )
+        threshold_profile_source = "Layer 1 behaviour profile fallback"
+    else:
+        threshold_profile = dict(layer1_obs_profile)
+        threshold_profile_source = "supplied Layer 1 behaviour profile"
+
+    low_threshold = threshold_profile.get("q05", np.nan)
+    high_threshold = threshold_profile.get("q95", np.nan)
+    threshold_provenance = {
+        "source": threshold_profile_source,
+        "input_values": "raw valid OBS only; temporary fills excluded",
+        "period_start": prepared.coverage["common_start"],
+        "period_end": prepared.coverage["common_end"],
+        "raw_valid_observation_count": int(prepared.obs_aligned.notna().sum()),
+        "unit": discharge_unit,
+        "low_flow_definition": "Q <= raw OBS Q05",
+        "low_flow_percentile": 0.05,
+        "low_flow_threshold": low_threshold,
+        "high_flow_definition": "Q >= raw OBS Q95",
+        "high_flow_percentile": 0.95,
+        "high_flow_threshold": high_threshold,
+    }
+    signature_kwargs["low_flow_threshold"] = low_threshold
+    signature_kwargs["high_flow_threshold"] = high_threshold
 
     obs_results = calculate_all_hydrological_signatures(
         obs_analysis,
         **signature_kwargs,
     )
-    ml_results = calculate_all_hydrological_signatures(
-        ml_aligned,
-        **signature_kwargs,
+    ml_results = (
+        None
+        if prepared.model_analysis is None
+        else calculate_all_hydrological_signatures(
+            prepared.model_analysis, **signature_kwargs
+        )
     )
 
-    if use_obs_thresholds_for_ml:
-        low_threshold = obs_results["low_flow"].metrics["low_flow_threshold"]
-        high_threshold = obs_results["high_flow"].metrics["high_flow_threshold"]
-
-        ml_results["low_flow"] = calculate_low_flow_signatures(
-            ml_aligned,
-            threshold=low_threshold,
-            percentile=signature_kwargs.get("low_flow_percentile", 0.05),
-        )
-        ml_results["high_flow"] = calculate_high_flow_signatures(
-            ml_aligned,
-            threshold=high_threshold,
-            percentile=signature_kwargs.get("high_flow_percentile", 0.95),
-        )
-        ml_results["threshold_event_hydrographs"] = (
-            calculate_threshold_event_hydrographs(
-                ml_aligned,
-                threshold=high_threshold,
-                percentile=signature_kwargs.get("high_flow_percentile", 0.95),
+    for result_set in (obs_results, ml_results):
+        if result_set is None:
+            continue
+        for group in ("low_flow", "high_flow", "threshold_event_hydrographs"):
+            result_set[group].metadata["threshold_provenance"] = dict(
+                threshold_provenance
             )
-        )
 
-    combined_summary = pd.concat(
-        [
-            signatures_to_summary_table(obs_results, "obs"),
-            signatures_to_summary_table(ml_results, "ml"),
-        ],
-        ignore_index=True,
-    )
+    summaries = [signatures_to_summary_table(obs_results, "obs")]
+    if ml_results is not None:
+        summaries.append(signatures_to_summary_table(ml_results, "model"))
+    combined_summary = pd.concat(summaries, ignore_index=True)
 
     return {
+        "mode": prepared.mode,
+        "coverage": prepared.coverage,
+        "imputation_log": prepared.imputation_log,
+        "threshold_provenance": threshold_provenance,
         "obs_aligned": obs_aligned,
         "ml_aligned": ml_aligned,
         "obs_analysis": obs_analysis,
+        "ml_analysis": prepared.model_analysis,
         "obs_results": obs_results,
         "ml_results": ml_results,
         "summary": combined_summary,
@@ -555,7 +586,6 @@ def extract_compact_signature_profile(
     flashiness = results["flashiness"].metrics
     autocorrelation = results["autocorrelation"].metrics
     events = results["threshold_event_hydrographs"].metrics
-    derivative_events = results["derivative_event_hydrographs"].metrics
     peaks = results["peaks"].metrics
 
     return {
@@ -598,16 +628,100 @@ def extract_compact_signature_profile(
         "median_time_to_peak_days": events.get(
             "median_time_to_peak_days", np.nan
         ),
-        "derivative_event_count": derivative_events.get(
-            "event_count", np.nan
-        ),
-        "derivative_median_rising_limb_rate": derivative_events.get(
-            "median_rising_limb_rate", np.nan
-        ),
-        "derivative_median_recession_limb_slope": derivative_events.get(
-            "median_recession_limb_slope", np.nan
-        ),
     }
+
+
+# One representative, interpretable result for each of the 13 Layer 2
+# signature groups. Detailed scalar metrics remain available separately.
+_PRIMARY_SIGNATURE_METRICS = {
+    "flow_magnitude": ("mean_flow", "Mean discharge"),
+    "low_flow": ("low_flow_frequency", "Low-flow frequency"),
+    "high_flow": ("high_flow_frequency", "High-flow frequency"),
+    "annual_maximum": ("median_annual_maximum", "Median annual maximum"),
+    "zero_flow": ("zero_flow_ratio", "Zero-flow proportion"),
+    "baseflow": ("baseflow_index", "Baseflow index"),
+    "flashiness": ("whole_record_flashiness_index", "Flashiness index"),
+    "autocorrelation": ("autocorrelation_lag_1", "Lag-1 autocorrelation"),
+    "rising_limb": ("median_rising_rate", "Median rising-limb rate"),
+    "recession_limb": ("median_recession_rate", "Median recession-limb rate"),
+    "peaks": ("peak_frequency_per_year", "Peak frequency per year"),
+    "seasonality": (
+        "walsh_lawler_seasonality_index",
+        "Walsh-Lawler seasonality index",
+    ),
+    "threshold_event_hydrographs": (
+        "event_count",
+        "Threshold-event count",
+    ),
+}
+
+
+def build_primary_signature_comparison(
+    obs_results: dict[str, SignatureResult],
+    model_results: Optional[dict[str, SignatureResult]] = None,
+    model_name: str = "ML",
+    coverage: Optional[dict[str, Any]] = None,
+) -> pd.DataFrame:
+    """
+    Build the user-facing diagnostic table with exactly 13 rows.
+
+    Each row represents one signature group. OBS-only runs retain the same
+    schema but leave model comparison fields empty. In comparison mode,
+    direction and both absolute and percentage magnitude are reported; this
+    makes statements such as "annual maximum is higher by ..." explicit.
+    """
+    rows = []
+    coverage = {} if coverage is None else coverage
+    for group, (metric, label) in _PRIMARY_SIGNATURE_METRICS.items():
+        obs_result = obs_results[group]
+        obs_value = obs_result.metrics.get(metric, np.nan)
+        model_result = None if model_results is None else model_results[group]
+        model_value = (
+            np.nan if model_result is None else model_result.metrics.get(metric, np.nan)
+        )
+        if pd.notna(obs_value) and pd.notna(model_value):
+            difference = float(model_value) - float(obs_value)
+            percentage = relative_difference_percent(obs_value, model_value)
+            direction = (
+                "equal" if difference == 0 else ("higher" if difference > 0 else "lower")
+            )
+            magnitude = format_display_number(abs(difference))
+            if pd.notna(percentage):
+                assessment = (
+                    f"{model_name} is {direction} than OBS by {magnitude} "
+                    f"({format_display_number(abs(percentage))}%)."
+                )
+            else:
+                assessment = f"{model_name} is {direction} than OBS by {magnitude}."
+        else:
+            difference, percentage, direction = np.nan, np.nan, None
+            assessment = (
+                "OBS signature calculated; no model input supplied."
+                if model_results is None
+                else "Insufficient data for this comparison."
+            )
+        rows.append(
+            {
+                "signature_group": group,
+                "diagnostic_signature": label,
+                "representative_metric": metric,
+                "obs_value": obs_value,
+                f"{model_name}_value": model_value,
+                "absolute_difference": difference,
+                "relative_difference_percent": percentage,
+                "model_direction": direction,
+                "assessment": assessment,
+                "obs_status": obs_result.status,
+                "model_status": None if model_result is None else model_result.status,
+                "analysis_start": coverage.get("common_start"),
+                "analysis_end": coverage.get("common_end"),
+                "temporary_imputation_used": bool(
+                    coverage.get("obs_temporarily_filled", 0)
+                    or coverage.get("model_temporarily_filled", 0)
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def relative_difference_percent(
@@ -951,6 +1065,7 @@ __all__ = [
     "extract_signature_profile",
     "calculate_obs_ml_signature_results",
     "extract_compact_signature_profile",
+    "build_primary_signature_comparison",
     "relative_difference_percent",
     "circular_month_difference",
     "compare_signature_profiles",

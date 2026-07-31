@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 import folium
+import pandas as pd
 from folium.plugins import MarkerCluster
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -79,7 +80,6 @@ def make_target_map(meta, candidate_result: dict) -> folium.Map:
     """
     target_id = candidate_result["target_id"]
     target = candidate_result["target"]
-    radius = candidate_result["radius_km"]
     candidates = candidate_result["candidates"]
     selected_ids = set(candidates["gauge_id"])
 
@@ -88,26 +88,23 @@ def make_target_map(meta, candidate_result: dict) -> folium.Map:
         zoom_start=6, tiles="CartoDB positron", control_scale=True,
     )
 
-    folium.Circle(
-        location=[target["StationLat"], target["StationLon"]],
-        radius=radius * 1000, color="red", weight=1.5, fill=False,
-        tooltip=f"Search radius: {radius:.1f} km",
-    ).add_to(local_map)
-
-    from src.trihydra.layer3.gauge_network import haversine_km
-
     all_other = meta.loc[~meta["gauge_id"].eq(target_id)].copy()
-    all_other["distance_km"] = haversine_km(
-        target["StationLat"], target["StationLon"],
-        all_other["StationLat"].to_numpy(), all_other["StationLon"].to_numpy(),
-    )
-    nearby = all_other.loc[all_other["distance_km"].le(radius)]
+    target_catchment = str(target.get("Catchment", "")).strip().casefold()
+    nearby = all_other.loc[
+        all_other["Catchment"].fillna("").astype(str).str.strip().str.casefold()
+        .eq(target_catchment)
+        & pd.to_numeric(all_other["StationLat"], errors="coerce").between(-90, 90)
+        & pd.to_numeric(all_other["StationLon"], errors="coerce").between(-180, 180)
+    ]
 
     for _, row in nearby.loc[~nearby["gauge_id"].isin(selected_ids)].iterrows():
         folium.CircleMarker(
             location=[row["StationLat"], row["StationLon"]], radius=3, color="grey",
             fill=True, fill_opacity=0.4,
-            popup=folium.Popup(_station_popup(row) + f"<br>Distance: {row['distance_km']:.1f} km", max_width=350),
+            popup=folium.Popup(
+                _station_popup(row) + "<br>Same catchment; not selected",
+                max_width=350,
+            ),
             tooltip=row["gauge_id"],
         ).add_to(local_map)
 
@@ -117,10 +114,15 @@ def make_target_map(meta, candidate_result: dict) -> folium.Map:
             location=[row["StationLat"], row["StationLon"]], radius=7, color=marker_color,
             fill=True, fill_opacity=0.9,
             popup=folium.Popup(
-                _station_popup(row) + f"<br>Distance: {row['distance_km']:.1f} km<br>Same river: {row['same_river']}",
+                _station_popup(row)
+                + f"<br>Same river: {row['same_river']}"
+                + f"<br>Area similarity: {row['area_similarity']:.3f}",
                 max_width=350,
             ),
-            tooltip=f"{row['gauge_id']} | {row['distance_km']:.1f} km",
+            tooltip=(
+                f"{row['gauge_id']} | area similarity "
+                f"{row['area_similarity']:.3f}"
+            ),
         ).add_to(local_map)
 
     folium.Marker(
@@ -192,6 +194,6 @@ if __name__ == "__main__":
     print(
         "This module is meant to be imported. Call "
         "generate_layer3_maps(meta, candidate_result, station_id=...) "
-        "using the gauge-network metadata (gauge_network.load_gauge_network) "
+        "using gauge-network metadata loaded through trihydra.io "
         "and a candidate_result (gauge_network.find_context_candidates)."
     )
