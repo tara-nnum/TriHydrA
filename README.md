@@ -1,22 +1,40 @@
 # TriHydrA
 
-TriHydrA is a layered diagnostic framework for assessing the integrity, hydrological behaviour, and contextual plausibility of streamflow time series.
+TriHydrA is a layered plausibility-assessment framework for long-term
+streamflow time series.
 
-## Available distribution
+This repository contains two editions:
 
-### TriHydrA Basic
+## TriHydrA Basic
 
-`TriHydrA Basic/` is the standalone distribution for Python and Jupyter users. It includes:
+Designed for individual users working in Python or Jupyter Notebook.
 
-- the complete format-independent TriHydrA analysis package;
-- a guided Jupyter notebook;
-- simple Python runners;
-- example station and context data;
-- installation and usage instructions; and
-- interactive HTML plots and readable text reports.
+- Simple CSV input
+- Minimal configuration
+- Interactive HTML diagnostics
+- Human-readable text reports
 
-Start with `TriHydrA Basic/README.txt`.
+See [TriHydrA Basic/README.txt](TriHydrA%20Basic/README.txt).
 
-## Planned distribution
+## TriHydrA CLI
 
-`TriHydrA ECMWF/` will contain the configuration-driven batch-processing distribution intended for larger operational datasets.
+Designed for configurable batch processing and HPC-oriented workflows.
+
+- NetCDF observation input
+- AIFL pickle simulation input
+- TOML and Pydantic configuration
+- Multi-station processing
+- TXT, NetCDF, and HTML outputs
+- Automated test suite
+
+See [TriHydrA CLI/README.txt](TriHydrA%20CLI/README.txt).
+
+## Assessment structure
+
+- Layer 1: intrinsic time-series quality checks
+- Layer 2: hydrological signatures and event behaviour
+- Layer 3: network and catchment context
+- Comparison: observation–simulation or series–series assessment
+
+> A TriHydrA review classification indicates that evidence should be
+> inspected. It does not by itself establish that the data are erroneous.
