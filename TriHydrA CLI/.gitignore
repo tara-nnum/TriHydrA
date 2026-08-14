@@ -1,0 +1,42 @@
+# Python-generated files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter-generated files
+.ipynb_checkpoints/
+
+# Test and analysis caches
+.pytest_cache/
+.pytest_tmp/
+.coverage
+htmlcov/
+
+# Local Python environments and package metadata
+.venv/
+venv/
+env/
+*.egg-info/
+
+# TriHydrA-generated user results
+/results/
+/comparison_results/
+/outputs/
+
+# Local ECMWF example datasets (not distributed through GitHub)
+/data/*.nc
+/data/*.p
+/data/*.pickle
+/data/static_attributes_filtered.csv
+
+# Editor and operating-system clutter
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary and log files
+*.log
+*.tmp
+~$*
