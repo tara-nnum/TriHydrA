@@ -1,0 +1,4 @@
+"station_id","longitude","latitude","river_name","catchment_name","catchment_area_km2","series_type"
+"camelsbr_42210000","-45.0808","-16.6572","Sao Francisco","Sao Francisco","106920.55","obs"
+"camelsbr_43200000","-45.07","-16.3725","Sao Francisco","Sao Francisco","154118.81","obs"
+"GRDC_3651408","-45.3825","-16.9067","Paracatu","Sao Francisco","41573.91","obs"

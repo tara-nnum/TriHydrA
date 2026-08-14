@@ -1,42 +1,34 @@
-# Python cache
+# Python-generated files
 __pycache__/
-*.pyc
-.ipynb_checkpoints/
-notebooks/anaconda_projects/
+*.py[cod]
+*$py.class
+*.egg-info/
 
-# Virtual environments
-.env
+# Jupyter and test caches
+.ipynb_checkpoints/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local environments
 .venv/
 venv/
-# trihydra/
+env/
 
-# IDE/editor folders
-.idea/
+# Generated TriHydrA results (source folders named "outputs" remain tracked)
+/TriHydrA Basic/results/
+/TriHydrA Basic/comparison_results/
+/TriHydrA ECMWF/results/
+/TriHydrA ECMWF/outputs/
+
+# Editor and operating-system clutter
 .vscode/
-
-# Data folders
-data/raw/
-data/processed/
-
-# Large data files
-*.p
-*.pkl
-*.pickle
-*.nc
-*.zarr/
-*.h5
-*.hdf5
-
-# Output files
-outputs/
-figures/
-plots/
-reports/
-*.csv
-
-# Allow small sample CSVs if needed
-!data/sample/*.csv
-
-# OS files
+.idea/
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Temporary files
+*.log
+*.tmp
+~$*
