@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trihydra"
+version = "0.4.0"
+description = "Layered plausibility assessment for streamflow time series"
+readme = "README.txt"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "xarray",
+    "statsmodels",
+    "ruptures",
+    "plotly",
+    "pillow",
+    "pydantic>=2",
+    "netcdf4",
+]
+
+[project.scripts]
+trihydra = "trihydra.cli:main"
+
+[project.optional-dependencies]
+netcdf = ["netcdf4", "h5netcdf", "h5py"]
+development = ["pytest>=8,<9"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["trihydra*"]
+
+[tool.setuptools.package-data]
+"trihydra.resources.climate" = ["*.tif", "*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-ra --basetemp=.pytest_tmp"
