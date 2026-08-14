@@ -7,6 +7,7 @@ __pycache__/
 # Jupyter and test caches
 .ipynb_checkpoints/
 .pytest_cache/
+.pytest_tmp/
 .coverage
 htmlcov/
 
@@ -15,11 +16,21 @@ htmlcov/
 venv/
 env/
 
-# Generated TriHydrA results (source folders named "outputs" remain tracked)
+# Generated TriHydrA Basic results
 /TriHydrA Basic/results/
 /TriHydrA Basic/comparison_results/
-/TriHydrA ECMWF/results/
-/TriHydrA ECMWF/outputs/
+/TriHydrA Basic/outputs/
+
+# Generated TriHydrA CLI results
+/TriHydrA CLI/results/
+/TriHydrA CLI/comparison_results/
+/TriHydrA CLI/outputs/
+
+# Local ECMWF example datasets
+/TriHydrA CLI/data/*.nc
+/TriHydrA CLI/data/*.p
+/TriHydrA CLI/data/*.pickle
+/TriHydrA CLI/data/static_attributes_filtered.csv
 
 # Editor and operating-system clutter
 .vscode/
