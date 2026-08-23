@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/trihydra_logo.svg" alt="TriHydrA" width="720">
+  <img src="docs/assets/trihydra_logo.svg?v=2" alt="TriHydrA" width="520">
 </p>
 
 <p align="center">
