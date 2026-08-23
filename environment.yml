@@ -1,0 +1,47 @@
+name: trihydra
+
+# Keep one consistent solver channel. Mixing defaults and conda-forge produced
+# binary incompatibilities in the previous local environment.
+channels:
+  - conda-forge
+  - nodefaults
+
+# Keep Windows numerical libraries from exhausting thread resources when
+# TriHydrA is started through Jupyter or another long-running application.
+variables:
+  OPENBLAS_NUM_THREADS: "1"
+  OMP_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+
+dependencies:
+  # Runtime
+  - python=3.11
+  # NumPy 2.4 currently emits a binary-compatibility warning with netCDF4 1.7.
+  - numpy>=2,<2.4
+  # OpenBLAS avoids the Windows MKL runtime crash observed in numpy.corrcoef.
+  - libblas=*=*openblas
+  - pandas
+  - scipy
+  - xarray
+  - statsmodels
+  - ruptures
+
+  # CARAVAN NetCDF and AIFL xarray-pickle support
+  - netcdf4
+  - h5netcdf
+  - h5py
+
+  # Interactive HTML diagnostics
+  - plotly
+  - pillow
+
+  # Validated TOML configuration
+  - pydantic>=2
+
+  # Development tests
+  - pytest>=8,<9
+
+  # Interactive notebook example
+  - jupyterlab
+  - notebook
+  - ipykernel

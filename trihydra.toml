@@ -1,0 +1,424 @@
+# =============================================================================
+#                              TRIHYDRA CONFIGURATION
+# =============================================================================
+# This is the only configuration file needed for a normal TriHydrA run.
+# Paths are resolved relative to this file.
+#
+# FIRST-TIME USER: edit Sections 1-5 first.
+#   1. Choose stations
+#   2. Choose pipeline components
+#   3. Choose saved outputs
+#   4. Describe the required primary series
+#   5. Optionally describe a second series
+#
+# Sections 6-9 contain scientific settings. Their defaults already form a
+# complete working configuration. Change them only deliberately.
+#
+# TOML reminders:
+#   - switches are true or false (lowercase)
+#   - text and paths use quotation marks
+#   - lines beginning with # are explanations and are not executed
+# =============================================================================
+
+
+# =============================================================================
+# 1. CHOOSE THE STATIONS
+# =============================================================================
+
+[run]
+# Use exactly ONE selection method.
+
+# Method A (active example): write one or more station IDs here.
+station_ids = ["GRDC_3634220"]
+
+# Method B: comment out station_ids above, create a plain-text list, then
+# uncomment station_file. Put one exact station ID per line. Blank lines and
+# lines beginning with # are ignored. Relative paths start beside this TOML.
+# station_file = "stations.txt"
+
+# Method C: comment out station_ids above, then set this to true.
+all_stations = false
+
+# Continue processing the remaining stations if one station fails.
+continue_on_station_error = true
+
+
+# =============================================================================
+# 2. CHOOSE WHAT TRIHYDRA WILL CALCULATE
+# =============================================================================
+
+[layers]
+layer1 = true       # intrinsic data-quality and consistency checks
+layer2 = true       # hydrological signatures and event behaviour
+layer3 = false     # context comparison with other loaded observations
+comparison = false  # comparison between series1 and series2
+
+# Layer 3 needs multiple observations loaded in the same run and matching rows
+# in data/context.csv. Comparison needs series2.enabled = true.
+
+
+# =============================================================================
+# 3. CHOOSE WHAT TRIHYDRA WILL SAVE
+# =============================================================================
+
+[output]
+# TriHydrA creates this folder when the run starts.
+directory = "outputs/example_run"
+
+# TXT file for station summaries and evidence.
+write_text = true
+
+# One network index plus one grouped NetCDF file per station.
+write_netcdf = true
+
+# Progress, warnings, failures and elapsed time.
+write_log = true
+
+# Interactive HTML plots:
+# "all"                 = every completed station
+# "concerns_and_review" = Minor concerns and Needs review
+# "needs_review"        = Needs review only
+# "none"                = no HTML
+# "ask"                 = ask after an interactive run
+html_mode = "needs_review"
+
+# Used only when html_mode="ask" but no person can answer (for example, HPC).
+non_interactive_html_mode = "needs_review"
+
+# Keep false for normal batch use. HTML files are still saved when false.
+show_figures = false
+
+
+# =============================================================================
+# 4. PRIMARY INPUT (SERIES 1) — REQUIRED
+# =============================================================================
+
+[series1]
+# series1 is always the primary/reference series. The role explains what it is.
+name = "series1"
+role = "observation"
+units = "mm/day"
+
+# Active example: CARAVAN-style NetCDF.
+format = "netcdf"
+path = "data/caravan_observations.nc"
+variable = "streamflow"
+station_coordinate = "basin"
+time_coordinate = "date"
+
+# Optional NetCDF engine: "auto", "netcdf4", or "h5netcdf".
+# engine = "auto"
+
+# Wide-CSV alternative (date column + one column per station):
+# format = "csv"
+# path = "data/discharge.csv"
+# date_column = "date"
+# Remove/comment variable, station_coordinate and time_coordinate for CSV.
+
+# Trusted AIFL long-term-pickle alternative:
+# format = "aifl_pickle"
+# path = "data"
+# trusted = true  # never enable for files from an unknown source
+# time_step = 0
+# observation_variable = "streamflow_obs"
+# simulation_variable = "streamflow_sim"
+# Remove/comment the NetCDF-only fields when using pickle.
+
+[series1.timespan]
+# Use "full", or use "range" and uncomment both dates.
+mode = "full"
+# start_date = 1980-01-01
+# end_date = 2009-12-31
+
+
+# =============================================================================
+# 5. OPTIONAL SECOND INPUT (SERIES 2)
+# =============================================================================
+
+[series2]
+# Enable this only when a second series is required.
+enabled = false
+# name = "series2"
+role = "simulation"
+units = "mm/day"
+# format = "aifl_pickle"
+
+# For a second NetCDF source, add:
+# path = "data/candidate.nc"
+# variable = "streamflow"
+# station_coordinate = "basin"
+# time_coordinate = "date"
+
+# For trusted AIFL results, use:
+format = "aifl_pickle"
+path = "data"
+name = "AIFL"
+trusted = true
+time_step = 0
+observation_variable = "streamflow_obs"
+simulation_variable = "streamflow_sim"
+
+# A second wide CSV uses format="csv", path and date_column as in series1.
+
+[series2.timespan]
+mode = "full"
+# start_date = 2010-01-01
+# end_date = 2019-12-31
+
+# For recent-versus-historical assessment, series1 and series2 may point to
+# the same source but must have different names and different date ranges.
+
+
+# =============================================================================
+# 6. TWO-SERIES COMPARISON SETTINGS
+#    Used only when layers.comparison=true and series2.enabled=true.
+# =============================================================================
+
+[comparison]
+# "paired_overlap": compare the shared dated period.
+# "independent_timespans": compare periods that need not overlap.
+mode = "paired_overlap"
+
+# Prefer performance metrics already supplied with the model output.
+calculate_daily_metrics = false
+include_provided_metrics = true
+
+
+# =============================================================================
+# 7. LAYER 1 — CHECK SWITCHES AND SCIENTIFIC SETTINGS
+#
+# To skip a check, change only its enabled value to false.
+# Disabled checks do not contribute to the Layer 1 composite.
+# =============================================================================
+
+[layer1.missing_values]
+enabled = false
+
+[layer1.long_gaps]
+enabled = false
+# Only gaps longer than this are included in the detailed evidence table.
+minimum_reported_gap_days = 3
+
+[layer1.negative_discharge]
+enabled = true
+# Values nearer to zero than this are treated as numerical noise.
+tolerance = 0.001
+
+[layer1.duplicate_timestamps]
+enabled = true
+
+[layer1.timestep_consistency]
+enabled = true
+
+[layer1.zero_flow_regime]
+enabled = true
+decimals = 3
+
+[layer1.low_variability]
+enabled = true
+# Repeated non-zero flow must persist this long to become a candidate.
+minimum_plateau_days = 15
+decimals = 3
+
+[layer1.spike_dip]
+enabled = true
+minimum_recovery = 0.80
+minimum_score = 8.0
+absolute_change_reference_quantile = 0.99
+score_reference_quantile = 0.995
+robust_mad_multiplier = 6.0
+# Outer daily changes must reach this multiple of normal monthly change.
+minimum_outer_change_multiplier = 1.0
+
+[layer1.step_shift]
+enabled = true
+long_record_min_years = 12.0
+long_record_block_years = 4
+short_record_divisor = 3.0
+minimum_block_years = 1
+minimum_valid_days_per_month = 10
+minimum_block_coverage = 0.55
+minimum_calendar_months = 8
+structural_threshold = 3.0
+# Q05 and Q25 percentiles correspond to FDC Q95 and Q75 low-flow levels.
+tier_3_maximum_quantile = 0.05
+tier_1_minimum_quantile = 0.25
+tier_3_points = 0.0
+tier_2_points = 1.0
+tier_1_points = 2.0
+# Score >=1.0 is Tier 2; score strictly >1.5 is Tier 1.
+composite_tier_2_minimum_score = 1.0
+composite_tier_1_above_score = 1.5
+refinement_block_fraction = 0.5
+consolidation_max_block_widths = 2.0
+
+[layer1.epoch_drift]
+enabled = true
+minimum_valid_days_per_month = 10
+minimum_valid_months_per_year = 8
+epoch_years = 5
+minimum_valid_annual_levels = 5
+annual_noise_floor_log = 0.03
+meaningful_epoch_change_score = 1.0
+# Final tier uses the share of assessed years classified as stable.
+tier_3_minimum_stable_fraction = 0.75
+tier_2_minimum_stable_fraction = 0.50
+overview_epochs_per_segment = 4
+maximum_overview_slopes = 4
+
+
+# ----- Layer 1 composite policy -------------------------------
+
+[layer1.composite.tier_points]
+tier_3 = 0
+tier_2 = 1
+tier_1 = 2
+
+[layer1.composite.missing_values]
+tier_2_minimum_percent = 5.0
+# Tier 1 applies strictly above this percentage.
+tier_1_above_percent = 15.0
+
+[layer1.composite.long_gaps]
+long_gap_definition_days = 5
+tier_2_minimum_days = 6
+tier_1_minimum_days = 31
+tier_2_missing_share = 0.50
+tier_1_missing_share = 0.25
+
+[layer1.composite.negative_discharge]
+# Q05 percentile, equivalent to the conventional FDC Q95 low-flow value.
+low_flow_reference_quantile = 0.05
+tier_1_reference_multiplier = 1.0
+
+[layer1.composite.low_variability]
+# Retained plateaus from 15-30 days are Tier 2; Tier 1 begins here.
+tier_1_minimum_days = 31
+
+[layer1.composite.spike_dip]
+# Tier 2 contains 1-5 unresolved candidates by default.
+tier_1_minimum_unresolved_count = 6
+
+[layer1.composite.classification]
+# Percent of maximum possible score from enabled, assessable checks only.
+minor_concerns_minimum_percent = 7.5
+needs_review_minimum_percent = 20.0
+
+[layer1.composite.weights]
+missing_values = 2
+long_gaps = 2
+duplicate_timestamps = 3
+timestep_consistency = 3
+negative_discharge = 3
+spike_dip = 1
+low_variability = 1
+step_shift = 3
+epoch_drift = 2
+
+
+# =============================================================================
+# 8. LAYER 2 — HYDROLOGICAL SIGNATURES AND COMPARISON RULES
+# =============================================================================
+
+[layer2.annual]
+minimum_valid_days_per_year = 30
+minimum_valid_days_per_month = 10
+# Lyne-Hollick digital-filter settings used for the baseflow index.
+baseflow_alpha = 0.925
+baseflow_passes = 3
+minimum_baseflow_segment_days = 3
+
+[layer2.events]
+# Events cross Q95 and their shoulders remain above Q90.
+trigger_percentile = 0.95
+boundary_percentile = 0.90
+# A one-day threshold exceedance cannot explain the spike that created it.
+spike_crosscheck_minimum_event_duration_days = 3.0
+
+[layer2.comparison]
+# Inverse JSD and cosine similarity use these shared boundaries.
+similarity_tier3_minimum = 0.80
+similarity_tier2_minimum = 0.50
+minimum_assessable_components = 4
+# Month differences are circular: December and January are one month apart.
+seasonal_timing_tier3_max_months = 1
+seasonal_timing_tier2_max_months = 3
+time_to_peak_tier3_max_days = 3.0
+time_to_peak_tier1_min_days = 5.0
+event_duration_tier3_max_days = 3.0
+event_duration_tier2_max_days = 7.0
+similar_maximum_percent = 12.5
+review_maximum_percent = 43.75
+
+[layer2.comparison.components]
+# Set a component to false to exclude it from comparison scoring.
+flow_behaviour = true
+annual_flashiness_shape = true
+annual_baseflow_shape = true
+seasonal_profile_shape = true
+seasonal_timing = true
+event_time_to_peak = true
+event_duration = true
+representative_event_shape = true
+
+[layer2.comparison.weights]
+flow_behaviour = 1
+annual_flashiness_shape = 1
+annual_baseflow_shape = 1
+seasonal_profile_shape = 1
+seasonal_timing = 1
+event_time_to_peak = 1
+event_duration = 1
+representative_event_shape = 1
+
+
+# =============================================================================
+# 9. LAYER 3 — NETWORK CONTEXT
+#    Used only when layers.layer3=true.
+# =============================================================================
+
+[layer3]
+# Layer 3 currently evaluates observation context.
+series_type = "observation"
+
+[layer3.metadata]
+context_path = "data/context.csv"
+# Expected columns: station_id, longitude, latitude, river_name,
+# catchment_name, catchment_area_km2, series_type.
+
+[layer3.local_peers]
+minimum_peers = 1
+maximum_peers = 5
+maximum_search_radius_km = 50.0
+prefer_same_catchment = true
+prefer_same_river = true
+
+[layer3.analogue_peers]
+# These gauges must also satisfy the climate and catchment-area rules.
+minimum_peers = 2
+maximum_peers = 5
+require_same_climate = true
+maximum_catchment_area_ratio = 2.0
+maximum_search_radius_km = 1000.0
+
+[layer3.plotting]
+# "recommended", "all", or "none"
+mode = "recommended"
+
+[layer3.comparison]
+local_context_weight = 0.70
+comparable_catchment_weight = 0.30
+peak_tolerance_days = 5
+step_shift_tolerance_days = 50
+minimum_peak_timing_similarity = 0.50
+minimum_step_shift_timing_similarity = 0.50
+minimum_epoch_overlap_years = 5.0
+analogue_similarity_minimum = 0.80
+minimum_profile_points = 6
+event_time_to_peak_tolerance_days = 5.0
+event_duration_tolerance_days = 7.0
+peer_consensus_fraction = 0.50
+similar_minimum_percent = 75.0
+partial_minimum_percent = 40.0
+# Detailed context plots require at least this overall comparability.
+report_minimum_similarity_percent = 50.0
