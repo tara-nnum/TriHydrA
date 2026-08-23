@@ -1,0 +1,7 @@
+station_id,series_slot,inserted_issue,start_date,end_date,inserted_value_mm_day,explanation
+EXAMPLE_001,series1,short_missing_gap,2003-03-10,2003-03-12,NaN,Three consecutive missing daily observations.
+EXAMPLE_001,series1,long_missing_gap,2006-07-01,2006-07-20,NaN,Twenty consecutive missing daily observations.
+EXAMPLE_001,series1,negative_discharge,2004-11-05,2004-11-05,-0.30,Deliberate physically implausible negative discharge.
+EXAMPLE_001,series1,negative_discharge,2008-02-14,2008-02-14,-0.10,Second deliberate negative discharge.
+EXAMPLE_001,series1,persistent_step_shift,2005-01-01,2009-12-31,+1.20,Persistent upward offset applied to the remaining record.
+EXAMPLE_001,series2,smaller_step_shift,2005-01-01,2009-12-31,+0.45,Smaller candidate-series offset for pairwise comparison.

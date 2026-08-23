@@ -2,35 +2,33 @@
 __pycache__/
 *.py[cod]
 *$py.class
-*.egg-info/
 
-# Jupyter and test caches
+# Jupyter-generated files
 .ipynb_checkpoints/
+
+# Test and analysis caches
 .pytest_cache/
-.pytest_tmp/
+.pytest_tmp*/
 .coverage
 htmlcov/
 
-# Local environments
+# Local Python environments and package metadata
 .venv/
 venv/
 env/
+*.egg-info/
+anaconda_projects/
 
-# Generated TriHydrA Basic results
-/TriHydrA Basic/results/
-/TriHydrA Basic/comparison_results/
-/TriHydrA Basic/outputs/
+# TriHydrA-generated user results
+/results/
+/comparison_results/
+/outputs/
+/example/results/
+/_smoke_matrix/
 
-# Generated TriHydrA CLI results
-/TriHydrA CLI/results/
-/TriHydrA CLI/comparison_results/
-/TriHydrA CLI/outputs/
-
-# Local ECMWF example datasets
-/TriHydrA CLI/data/*.nc
-/TriHydrA CLI/data/*.p
-/TriHydrA CLI/data/*.pickle
-/TriHydrA CLI/data/static_attributes_filtered.csv
+# Private ECMWF example datasets (not distributed through GitHub)
+/data/*.p
+/data/*.pickle
 
 # Editor and operating-system clutter
 .vscode/
@@ -39,7 +37,7 @@ env/
 Thumbs.db
 desktop.ini
 
-# Temporary files
+# Temporary and log files
 *.log
 *.tmp
 ~$*

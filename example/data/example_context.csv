@@ -1,0 +1,5 @@
+station_id,longitude,latitude,river_name,catchment_name,catchment_area_km2,series_type
+EXAMPLE_001,8.0,50.0,Example River,Example Basin,820.0,observation
+EXAMPLE_002,8.12,50.08,Example River,Example Basin,910.0,observation
+EXAMPLE_003,8.26,50.18,Tributary Creek,Example Basin,760.0,observation
+EXAMPLE_004,13.2,52.1,Reference River,Reference Basin,860.0,observation

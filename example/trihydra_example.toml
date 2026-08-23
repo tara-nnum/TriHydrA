@@ -1,0 +1,57 @@
+# Complete fictional TriHydrA example. Paths are relative to this file.
+
+[run]
+all_stations = true
+continue_on_station_error = true
+
+[layers]
+layer1 = true
+layer2 = true
+layer3 = true
+comparison = true
+
+[output]
+directory = "results"
+write_text = false
+write_netcdf = true
+write_log = true
+html_mode = "all"
+non_interactive_html_mode = "all"
+show_figures = false
+
+[series1]
+format = "csv"
+path = "data/example_observations.csv"
+date_column = "date"
+name = "Example observations"
+role = "observation"
+units = "mm/day"
+
+[series1.timespan]
+mode = "full"
+
+[series2]
+enabled = true
+format = "csv"
+path = "data/example_simulations.csv"
+date_column = "date"
+name = "Example simulation"
+role = "simulation"
+units = "mm/day"
+
+[series2.timespan]
+mode = "full"
+
+[comparison]
+mode = "paired_overlap"
+calculate_daily_metrics = true
+include_provided_metrics = false
+
+[layer3]
+series_type = "observation"
+
+[layer3.metadata]
+context_path = "data/example_context.csv"
+
+[layer3.plotting]
+mode = "all"
