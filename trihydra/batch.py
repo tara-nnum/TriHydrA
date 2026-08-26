@@ -183,8 +183,6 @@ def _execute_config(path: str | Path = "trihydra.toml") -> TriHydrABatchResult:
     layer3_run = None if network_result is None else network_result.layer3_run
     if network_result is not None:
         network_result.configuration_used = public.model_dump(mode="json")
-        if public.output.write_text:
-            save_results(network_result, output_directory)
 
     html_mode = _resolve_html_mode(public)
     plot_targets = _selected_for_plotting(completed, html_mode)
@@ -214,6 +212,10 @@ def _execute_config(path: str | Path = "trihydra.toml") -> TriHydrABatchResult:
             netcdf_path,
             netcdf_path.parent / "stations",
         )
+    # Render text summaries last so FILES AVAILABLE reflects the outputs that
+    # were actually produced by this run rather than a hard-coded expectation.
+    if network_result is not None and public.output.write_text:
+        save_results(network_result, output_directory)
     elapsed = time.perf_counter() - started
     completed_count = int((manifest.get("status") == "completed").sum()) if not manifest.empty else 0
     failed_count = int((manifest.get("status") == "failed").sum()) if not manifest.empty else 0

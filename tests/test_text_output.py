@@ -4,7 +4,10 @@ import pandas as pd
 
 from trihydra.io.models import SourceProvenance, StationData
 from trihydra.outputs import save_results
-from trihydra.outputs.network_diagnostics import diagnostic_trigger_summary
+from trihydra.outputs.network_diagnostics import (
+    diagnostic_trigger_summary,
+    station_attention_ranking,
+)
 from trihydra.outputs.reports import render_network_summary, render_station_summary
 from trihydra.result import TriHydrANetworkResult, TriHydrAResult
 
@@ -50,6 +53,39 @@ def test_network_save_writes_one_index_and_each_station_summary(tmp_path):
     assert "A" in (tmp_path / "network_summary.txt").read_text(encoding="utf-8")
     assert "B" in (tmp_path / "network_summary.txt").read_text(encoding="utf-8")
     assert "network_summary" in written
+
+
+def test_station_summary_lists_only_files_that_are_actually_available(tmp_path):
+    result = _result("A")
+    network = TriHydrANetworkResult(
+        station_results={"A": result},
+        layer3_run=None,
+        summary=result.summary,
+        series_by_station={"A": result.station.obs},
+    )
+    station_directory = tmp_path / "A"
+    station_directory.mkdir(parents=True)
+    (station_directory / "layer1.html").write_text("example", encoding="utf-8")
+    netcdf_directory = tmp_path / "stations"
+    netcdf_directory.mkdir()
+    (netcdf_directory / "A.nc").write_bytes(b"example")
+    (tmp_path / "trihydra_network_summary.nc").write_bytes(b"example")
+
+    save_results(network, tmp_path)
+    report = (station_directory / "summary.txt").read_text(encoding="utf-8")
+    files_section = report.split("FILES AVAILABLE", 1)[1].split(
+        "This report is a screening summary", 1
+    )[0]
+
+    for expected in (
+        "summary.txt", "layer1.html",
+        "../network_summary.txt", "../trihydra_network_summary.nc",
+        "../stations/A.nc",
+    ):
+        assert expected in files_section
+    assert "layer1_evidence.txt" not in files_section
+    assert "layer2.html" not in files_section
+    assert "comparison.html" not in files_section
 
 
 def test_station_text_distinguishes_requested_selected_and_valid_dates():
@@ -106,3 +142,29 @@ def test_network_summary_counts_stations_series_and_triggering_checks():
     assert "Triggered" in report
     assert "MISSING VALUES" in report
     assert "100.0%" in report
+
+
+def test_network_summary_prioritizes_concerning_station_series():
+    needs_review = _result("REVIEW_FIRST")
+    needs_review.summary["layer1_class"] = "Needs review"
+    needs_review.summary["layer1_score_percent"] = 62.5
+    minor = _result("MINOR_SECOND")
+    minor.summary["layer1_class"] = "Minor concerns"
+    minor.summary["layer1_score_percent"] = 75.0
+    clean = _result("CLEAN")
+    clean.summary["layer1_score_percent"] = 0.0
+    summary = pd.concat(
+        [minor.summary, clean.summary, needs_review.summary], ignore_index=True
+    )
+
+    ranking = station_attention_ranking(summary)
+    report = render_network_summary(summary)
+
+    assert ranking["station_id"].tolist() == ["REVIEW_FIRST", "MINOR_SECOND", "CLEAN"]
+    assert ranking["attention_rank"].tolist() == [1, 2, 0]
+    assert "Stations requiring most attention" in report
+    priority_section = report.split("Stations requiring most attention", 1)[1].split(
+        "\nMINOR_SECOND  -  observation\n", 1
+    )[0]
+    assert priority_section.index("REVIEW_FIRST") < priority_section.index("MINOR_SECOND")
+    assert "CLEAN" not in priority_section

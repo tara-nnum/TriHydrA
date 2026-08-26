@@ -66,12 +66,27 @@ def _comparison_event_trace(
 
 
 def build_comparison_overview(result: dict) -> go.Figure:
-    """Build a descriptive overlay without assigning concern thresholds."""
+    """Build the complete comparison report with fully expanded tables."""
     reference_name = result["reference_name"]
     candidate_name = result["candidate_name"]
     overlay = result["overlay_data"]
     reference_l2 = result["reference_comparison_layer2"]
     candidate_l2 = result["candidate_comparison_layer2"]
+    diagnostic_row_count = len(layer2_typical_rows(reference_l2))
+    composite_row_count = len(result["layer2_composite"]["components"])
+
+    # Give every table row its own vertical space. The browser page may scroll,
+    # but the tables themselves should not require a second scrollbar.
+    diagnostic_table_height = max(320, 75 + 30 * diagnostic_row_count)
+    composite_table_height = max(360, 95 + 30 * composite_row_count)
+    row_pixel_heights = [
+        340, 340, 310, 310, diagnostic_table_height, composite_table_height,
+    ]
+    vertical_spacing = 0.035
+    figure_height = int(
+        sum(row_pixel_heights) / (1.0 - vertical_spacing * (len(row_pixel_heights) - 1))
+        + 220
+    )
     fig = make_subplots(
         rows=6, cols=2,
         specs=[
@@ -79,8 +94,8 @@ def build_comparison_overview(result: dict) -> go.Figure:
             [{"colspan": 2}, None], [{"type": "table", "colspan": 2}, None],
             [{"type": "table", "colspan": 2}, None],
         ],
-        row_heights=[0.19, 0.19, 0.16, 0.16, 0.15, 0.15],
-        horizontal_spacing=0.16, vertical_spacing=0.09,
+        row_heights=row_pixel_heights,
+        horizontal_spacing=0.16, vertical_spacing=vertical_spacing,
         subplot_titles=(
             "Selected-series hydrographs", "Annual flow statistics",
             "Annual catchment-response indices", "Representative high-flow events",
@@ -226,31 +241,57 @@ def build_comparison_overview(result: dict) -> go.Figure:
         columnwidth=[0.32, 0.15, 0.15, 0.15, 0.23],
         header=dict(
             values=["Diagnostic", reference_name, candidate_name, "Difference", "Comment"],
-            fill_color="#E9ECEF", align="left",
+            fill_color="#E9ECEF", align="left", height=30,
         ),
         cells=dict(
             values=[metrics, reference_display, candidate_display, difference_display, comments],
-            align="left",
+            align="left", height=28,
         ),
     ), row=5, col=1)
     composite = result["layer2_composite"]["components"]
     composite_summary = result["layer2_composite"]["summary"].iloc[0]
+    tier_meanings = {
+        "Tier 1": "Tier 1 - strong disagreement",
+        "Tier 2": "Tier 2 - moderate disagreement",
+        "Tier 3": "Tier 3 - close agreement",
+    }
+    tier_display = [
+        tier_meanings.get(str(tier), str(tier))
+        for tier in composite["tier"]
+    ]
+    score = int(composite_summary["layer2_score"])
+    maximum_score = int(composite_summary["maximum_assessable_score"])
+    score_percent = float(composite_summary["layer2_score_percent"])
+    class_display = {
+        "Strong review": "Review strongly recommended",
+        "Review": "Review recommended",
+        "Similar": "Close agreement",
+        "Not assessable": "Not assessable",
+    }.get(
+        str(composite_summary["layer2_class"]),
+        str(composite_summary["layer2_class"]),
+    )
+    fig.layout.annotations[-1].text = (
+        "Layer 2 composite assessment"
+        f"<br><sup>{score}/{maximum_score} = {score_percent:.1f}% - "
+        f"{class_display}</sup>"
+    )
     fig.add_trace(go.Table(
-        columnwidth=[0.28, 0.25, 0.14, 0.12, 0.10, 0.11],
+        columnwidth=[0.26, 0.23, 0.12, 0.22, 0.08, 0.09],
         header=dict(
             values=["Component", "Metric", "Value", "Tier", "Points", "Assessable"],
-            fill_color="#E9ECEF", align="left",
+            fill_color="#E9ECEF", align="left", height=30,
         ),
         cells=dict(values=[
             composite["component"], composite["metric"],
             [f"{value:.3f}" if pd.notna(value) else "Not available" for value in composite["value"]],
-            composite["tier"], composite["contribution"],
+            tier_display, composite["contribution"],
             composite["assessable"].map({True: "Yes", False: "No"}),
-        ], align="left"),
+        ], align="left", height=28),
     ), row=6, col=1)
     fig.update_layout(
         title=f"{result['station_id']} - comparison overview",
-        template="plotly_white", height=2050, hovermode="closest",
+        template="plotly_white", height=figure_height, hovermode="closest",
         barmode="overlay",
         legend=dict(orientation="v", x=1.01, y=1.0),
         legend2=dict(
@@ -260,16 +301,6 @@ def build_comparison_overview(result: dict) -> go.Figure:
             borderwidth=1,
         ),
         margin=dict(r=300),
-    )
-    fig.add_annotation(
-        x=1.0, y=0.0, xref="paper", yref="paper", xanchor="right",
-        yanchor="bottom", showarrow=False,
-        text=(
-            f"Layer 2 score: {int(composite_summary['layer2_score'])} - "
-            f"{composite_summary['layer2_class']}"
-        ),
-        bgcolor="rgba(244,247,251,0.96)", bordercolor="#B7C4CF",
-        borderwidth=1, borderpad=5,
     )
     fig.update_yaxes(title_text="Discharge", row=1, col=1)
     fig.update_yaxes(title_text="Discharge", row=2, col=1)

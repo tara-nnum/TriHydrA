@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import textwrap
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
 
-from trihydra.outputs.network_diagnostics import network_assessment_counts
+from trihydra.outputs.network_diagnostics import (
+    network_assessment_counts,
+    station_attention_ranking,
+)
 
 from trihydra.comparison.diagnostics import render_comparison_summary
 from trihydra.layer1.diagnostics import render_layer1_summary
@@ -21,7 +25,10 @@ def _title(text: str) -> list[str]:
     return [line("="), text.center(WIDTH), line("=")]
 
 
-def render_station_summary(result: TriHydrAResult) -> str:
+def render_station_summary(
+    result: TriHydrAResult,
+    available_files: Sequence[str] | None = None,
+) -> str:
     """Assemble one station report without interpreting layer internals here."""
     rows = result.summary
     primary_rows = rows.loc[rows["series_name"] == result.station.series1_name]
@@ -121,14 +128,11 @@ def render_station_summary(result: TriHydrAResult) -> str:
         threshold_rows.append(field(label, threshold, 2))
     lines += threshold_rows or ["  No configurable thresholds were recorded."]
     lines += render_layer3_thresholds(result.layer3)
-    lines += section("FILES AVAILABLE") + [
-        "  Interactive diagnostics", "    layer1.html", "    layer2.html",
-        "", "  Detailed evidence", "    layer1_evidence.txt", "    layer2_evidence.txt",
-    ]
-    if result.comparison is not None:
-        lines.append("    comparison_evidence.txt")
-    if result.layer3 is not None:
-        lines.append("    layer3_evidence.txt")
+    lines += section("FILES AVAILABLE")
+    if available_files:
+        lines += [f"  {path}" for path in available_files]
+    else:
+        lines.append("  The complete file list is added when this summary is saved.")
     lines += [
         "", line("="),
         "This report is a screening summary. A review classification indicates that",
@@ -217,6 +221,29 @@ def render_network_summary(
         field("No review needed", counts["no_review_series_count"], 4),
         field("Not assessed", counts["not_assessed_series_count"], 4),
     ]
+    priority = station_attention_ranking(summary)
+    concerning = priority.loc[priority["attention_rank"].gt(0)]
+    lines += section("Stations requiring most attention")
+    if concerning.empty:
+        lines.append("  No station-series assessments require Layer 1 attention.")
+    else:
+        shown = concerning.head(20)
+        lines += [
+            "  Rank  Station               Series              Status             Score",
+            "  " + "-" * 76,
+        ]
+        for _, row in shown.iterrows():
+            score = value(row.get("layer1_score_percent"), decimals=1, suffix="%")
+            lines.append(
+                f"  {int(row['attention_rank']):>4}  "
+                f"{str(row['station_id'])[:20]:<20}  "
+                f"{str(row['series_name'])[:18]:<18}  "
+                f"{str(row['layer1_class'])[:17]:<17}  "
+                f"{score:>7}"
+            )
+        remaining = len(concerning) - len(shown)
+        if remaining:
+            lines += ["", f"  {remaining} additional concerning station-series are stored in NetCDF."]
     if diagnostic_summary is not None and not diagnostic_summary.empty:
         lines += section("Layer 1 checks causing concerns") + [
             "  Trigger rate uses enabled, assessable station-series only.",

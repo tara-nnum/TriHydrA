@@ -70,7 +70,7 @@ def test_network_index_is_compact_and_points_to_station_file():
     result = _example_result()
     dataset = build_netcdf_dataset([result], _manifest(result))
 
-    assert dataset.sizes == {"station": 1, "diagnostic": 2}
+    assert dataset.sizes == {"station": 1, "diagnostic": 2, "attention_record": 1}
     assert dataset.station.item() == "EXAMPLE_001"
     assert dataset["processing_status"].item() == "completed"
     assert dataset["primary_series_name"].item() == "observation"
@@ -80,6 +80,9 @@ def test_network_index_is_compact_and_points_to_station_file():
     assert set(dataset.diagnostic.values.tolist()) == {"missing_values", "long_gaps"}
     assert dataset["diagnostic_concern_series_count"].sel(diagnostic="long_gaps").item() == 1
     assert dataset["diagnostic_trigger_rate_percent"].sel(diagnostic="long_gaps").item() == 100.0
+    assert dataset["attention_station_id"].item() == "EXAMPLE_001"
+    assert dataset["attention_series_name"].item() == "observation"
+    assert dataset["attention_rank"].item() == 0
     assert dataset.attrs["station_series_assessment_count"] == 1
     assert dataset.attrs["layer1_no_review_series_count"] == 1
 
