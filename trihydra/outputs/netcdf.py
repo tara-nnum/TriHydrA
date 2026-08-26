@@ -17,6 +17,7 @@ from trihydra.result import TriHydrAResult
 from trihydra.outputs.network_diagnostics import (
     diagnostic_trigger_summary,
     network_assessment_counts,
+    station_attention_ranking,
 )
 
 try:
@@ -864,7 +865,51 @@ def _build_network_dataset(
                 units="count" if name != "total_contribution" else "points",
                 description=description,
             )
-    counts = network_assessment_counts(_summary_rows(completed))
+    summary_rows = _summary_rows(completed)
+    ranking = station_attention_ranking(summary_rows)
+    if not ranking.empty:
+        network = network.assign_coords(
+            attention_record=("attention_record", np.arange(len(ranking), dtype=np.int32))
+        )
+        network.attention_record.attrs.update(
+            long_name="Station-series attention record",
+            description=(
+                "One record per independently assessed series; positive ranks are "
+                "ordered from greatest to least Layer 1 concern, while rank 0 means "
+                "no Layer 1 attention is required."
+            ),
+        )
+        attention_variables = {
+            "attention_rank": ranking["attention_rank"].to_numpy(dtype=np.int32),
+            "attention_station_id": ranking["station_id"].to_numpy(dtype=str),
+            "attention_series_name": ranking["series_name"].to_numpy(dtype=str),
+            "attention_series_role": ranking["series_role"].to_numpy(dtype=str),
+            "attention_layer1_class": ranking["layer1_class"].to_numpy(dtype=str),
+            "attention_layer1_score_percent": ranking["layer1_score_percent"].to_numpy(dtype=float),
+        }
+        for name, values in attention_variables.items():
+            network[name] = ("attention_record", values)
+        network["attention_rank"].attrs.update(
+            long_name="Layer 1 attention rank",
+            units="1",
+            description=(
+                "Needs-review series rank before minor-concern series; higher normalized "
+                "scores rank first within each class. Rank 0 means no attention required."
+            ),
+        )
+        network["attention_layer1_score_percent"].attrs.update(
+            long_name="Normalized Layer 1 score",
+            units="%",
+            description="Existing Layer 1 score normalized over enabled, assessable checks.",
+        )
+        for name, label in (
+            ("attention_station_id", "Station identifier"),
+            ("attention_series_name", "Series name"),
+            ("attention_series_role", "Series role"),
+            ("attention_layer1_class", "Layer 1 classification"),
+        ):
+            network[name].attrs.update(long_name=label)
+    counts = network_assessment_counts(summary_rows)
     network.attrs.update(
         title="TriHydrA network processing summary",
         software="TriHydrA",

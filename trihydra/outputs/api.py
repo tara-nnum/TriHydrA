@@ -60,6 +60,20 @@ def _domain_evidence(result: TriHydrAResult, domain: str) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True, sort=False) if frames else pd.DataFrame()
 
 
+def _available_station_files(directory: Path, station_id: str) -> list[str]:
+    """List files available for one station after all configured outputs finish."""
+    paths = {path.name for path in directory.iterdir() if path.is_file()}
+    paths.add("summary.txt")
+    root = directory.parent
+    for shared_name in ("network_summary.txt", "trihydra_network_summary.nc"):
+        if (root / shared_name).is_file():
+            paths.add(f"../{shared_name}")
+    station_netcdf = root / "stations" / f"{station_id}.nc"
+    if station_netcdf.is_file():
+        paths.add(f"../stations/{station_id}.nc")
+    return sorted(paths, key=lambda item: (item.startswith("../"), item.casefold()))
+
+
 def save_results(
     result: TriHydrAResult | TriHydrANetworkResult,
     output_directory: str | Path = "outputs",
@@ -99,9 +113,6 @@ def save_results(
     directory.mkdir(parents=True, exist_ok=True)
     written: dict[str, Path] = {}
 
-    summary_path = directory / "summary.txt"
-    summary_path.write_text(render_station_summary(result), encoding="utf-8")
-    written["summary"] = summary_path
     if result.layer1 is not None:
         path = directory / "layer1_evidence.txt"
         path.write_text(render_evidence_report(
@@ -146,6 +157,15 @@ def save_results(
             encoding="utf-8",
         )
         written["configuration"] = path
+    summary_path = directory / "summary.txt"
+    summary_path.write_text(
+        render_station_summary(
+            result,
+            available_files=_available_station_files(directory, result.station_id),
+        ),
+        encoding="utf-8",
+    )
+    written["summary"] = summary_path
     return written
 
 

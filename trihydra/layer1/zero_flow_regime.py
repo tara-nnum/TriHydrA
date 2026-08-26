@@ -51,7 +51,7 @@ def check_zero_flow_regime(
     monthly_zero_count = zero_mask.groupby(zero_mask.index.month).sum()
     monthly_valid_count = valid_mask.groupby(valid_mask.index.month).sum()
     monthly_zero_ratio = (
-        monthly_zero_count / monthly_valid_count.replace(0, pd.NA)
+        monthly_zero_count / monthly_valid_count.replace(0, float("nan"))
     ).astype(float)
     zero_flow_months = monthly_zero_ratio[monthly_zero_ratio > 0].index.tolist()
     zero_spells = []

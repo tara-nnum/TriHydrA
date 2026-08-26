@@ -68,6 +68,41 @@ def network_assessment_counts(summary: pd.DataFrame) -> dict[str, int]:
     }
 
 
+def station_attention_ranking(summary: pd.DataFrame) -> pd.DataFrame:
+    """Order station-series assessments by their existing Layer 1 concern."""
+    columns = [
+        "attention_rank", "station_id", "series_name", "series_role",
+        "layer1_class", "layer1_score_percent",
+    ]
+    if summary is None or summary.empty:
+        return pd.DataFrame(columns=columns)
+
+    frame = pd.DataFrame(index=summary.index)
+    for name in ("station_id", "series_name", "series_role", "layer1_class"):
+        frame[name] = summary.get(name, pd.Series("", index=summary.index)).fillna("").astype(str)
+    frame["layer1_score_percent"] = pd.to_numeric(
+        summary.get("layer1_score_percent", pd.Series(np.nan, index=summary.index)),
+        errors="coerce",
+    )
+    frame["_classification"] = frame["layer1_class"].map(_classification)
+    frame["_priority"] = frame["_classification"].map({
+        "needs_review": 2,
+        "minor_concerns": 1,
+        "no_review": 0,
+        "not_assessed": -1,
+    })
+    frame = frame.sort_values(
+        ["_priority", "layer1_score_percent", "station_id", "series_name"],
+        ascending=[False, False, True, True],
+        na_position="last",
+        kind="stable",
+    ).reset_index(drop=True)
+    concerning = frame["_priority"].gt(0)
+    frame["attention_rank"] = 0
+    frame.loc[concerning, "attention_rank"] = np.arange(1, int(concerning.sum()) + 1)
+    return frame[columns]
+
+
 def _component_tables(result: TriHydrAResult) -> list[tuple[str, pd.DataFrame]]:
     """Return enabled Layer 1 component tables for each assessed series."""
     tables: list[tuple[str, pd.DataFrame]] = []
@@ -145,4 +180,8 @@ def diagnostic_trigger_summary(
     )
 
 
-__all__ = ["diagnostic_trigger_summary", "network_assessment_counts"]
+__all__ = [
+    "diagnostic_trigger_summary",
+    "network_assessment_counts",
+    "station_attention_ranking",
+]
