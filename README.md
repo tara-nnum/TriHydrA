@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.5.0" src="https://img.shields.io/badge/version-0.5.0-24366f">
+  <img alt="Version 0.5.2" src="https://img.shields.io/badge/version-0.5.2-24366f">
   <img alt="Python 3.11 or newer" src="https://img.shields.io/badge/python-3.11%2B-1687b8">
   <img alt="Interfaces: Python and CLI" src="https://img.shields.io/badge/interfaces-Python%20%7C%20CLI-14845f">
   <img alt="Status: under validation" src="https://img.shields.io/badge/status-under%20validation-d27b40">
@@ -80,13 +80,14 @@ Prepared pandas series can also be assessed directly with `run_trihydra()` or
 
 ## Inputs and outputs
 
-| Supported inputs | Configurable outputs |
+| Supported inputs | Outputs |
 |---|---|
 | Station-by-time NetCDF | Per-station TXT reports |
 | Wide CSV | Per-station NetCDF files |
 | Trusted AIFL long-term result pickles | Network NetCDF summary |
 | Prepared pandas series | Interactive HTML diagnostics |
 | Optional station context CSV | Run log |
+| — | Always-written station assessment status index |
 
 NetCDF4 and HDF5-backed NetCDF files are supported through the available
 `netcdf4` and `h5netcdf` engines. Pairwise comparison requires compatible unit
@@ -121,9 +122,21 @@ NetCDF exploration without requiring the larger example datasets.
   data.
 - Default thresholds are configurable screening rules, not universal
   hydrological laws.
+- Default thresholds remain under large-sample validation. Testing across
+  different datasets has produced high trigger rates for some checks,
+  particularly epoch drift, spikes/dips, low variability and step shifts.
+  Thresholds may therefore require calibration for different datasets,
+  climates and hydrological regimes.
+- A high review rate does not demonstrate that the underlying records are
+  erroneous. Users should inspect the network-wide diagnostic trigger summary
+  before changing or disabling checks, and document the scientific rationale
+  for any adjustment.
 - Layer 3 requires multiple loaded observation series and matching station
   metadata.
 - A context metadata row alone does not load a station's time series.
+- TriHydrA currently loads the selected stations into memory before processing.
+  Very large datasets may need to be divided into batches according to
+  available memory.
 - Pickles can execute code and must only be loaded from trusted sources.
 
 ## AI-assisted development
@@ -140,4 +153,4 @@ TriHydrA was developed for the **ECMWF Code for Earth Challenge 2026**.
 
 ## Licensing
 
-An open-source software licence will be added before public release.
+TriHydrA is released under the [Apache License 2.0](LICENSE).

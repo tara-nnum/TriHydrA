@@ -17,6 +17,7 @@ from trihydra.plotting import plot_results
 from trihydra.layer3.visualisation import write_layer3_overview
 from trihydra.reporting import station_requires_review
 from trihydra.result import TriHydrABatchResult, TriHydrAResult
+from trihydra.outputs.reports import render_station_assessment_status
 from trihydra.settings import (
     TriHydrAConfig,
     build_runtime_config,
@@ -183,6 +184,14 @@ def _execute_config(path: str | Path = "trihydra.toml") -> TriHydrABatchResult:
     layer3_run = None if network_result is None else network_result.layer3_run
     if network_result is not None:
         network_result.configuration_used = public.model_dump(mode="json")
+
+    # This compact run index is always written, independently of optional
+    # TXT, NetCDF, log, and HTML output settings.
+    status_summary = pd.DataFrame() if network_result is None else network_result.summary
+    (output_directory / "station_assessment_status.txt").write_text(
+        render_station_assessment_status(manifest, status_summary),
+        encoding="utf-8",
+    )
 
     html_mode = _resolve_html_mode(public)
     plot_targets = _selected_for_plotting(completed, html_mode)

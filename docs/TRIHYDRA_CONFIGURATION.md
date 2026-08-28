@@ -177,6 +177,16 @@ Avoid reusing a folder when you need a clean comparison between runs.
 When `true`, TriHydrA writes readable summaries and evidence. TXT is intended
 for quick human inspection.
 
+`station_assessment_status.txt` is always written, even when
+`write_text = false`. This compact, tab-delimited run index contains one row
+per station, with separate Series 1 and Series 2 assessment columns when both
+are available. It also reports processing and station-series assessment totals
+at the top and can be opened in a text editor or imported into a spreadsheet.
+
+The `FILES AVAILABLE` section of each station summary is generated from the
+files actually written for that run. Disabled or inapplicable outputs are not
+listed.
+
 ### `write_netcdf`
 
 When `true`, TriHydrA writes:

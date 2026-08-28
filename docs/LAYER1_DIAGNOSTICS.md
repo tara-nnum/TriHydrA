@@ -265,6 +265,10 @@ Zero count and fraction among valid observations, spell count, longest spell,
 spell dates and durations, monthly zero-flow ratios, and months containing
 zero flow.
 
+Completely missing calendar months remain unavailable rather than being
+interpreted as zero flow. Missing monthly values are safely excluded from
+numeric conversion and zero-flow calculations.
+
 ### Limitations
 
 Rounding defines what counts as zero. A single setting cannot represent the
@@ -626,6 +630,11 @@ their pass status and metrics remain available in structured results.
   change can produce similar statistical patterns.
 - Thresholds should be changed only with a documented rationale. TriHydrA
   stores the configuration used so the assessment remains reproducible.
+- The default thresholds are screening defaults rather than globally calibrated
+  limits. Large-sample testing has produced high trigger rates for some checks,
+  particularly epoch drift, spikes/dips, low variability and step shifts.
+  Users should examine the network-wide trigger summary before interpreting
+  classifications or changing thresholds.
 
 ## 18. Scientific and technical references
 

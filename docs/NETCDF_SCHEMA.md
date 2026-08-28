@@ -90,6 +90,16 @@ station-series counts. A station is counted once in the physical-station
 totals even when both series are assessed; each series retains its own review
 classification.
 
+### Stations requiring most attention
+
+The `attention_record` dimension provides one ranking record for each assessed
+series. Its variables contain the station ID, series name and role, Layer 1
+classification, normalized Layer 1 score and attention rank. Series classified
+as `Needs review` are ranked before those with `Minor concerns`; within each
+class, the higher normalized score appears first. Rank zero means that Layer 1
+attention is not required. Observation and simulation results remain separate
+records even when they belong to the same physical station.
+
 ## Station file root
 
 One station file represents exactly one station, so it has no redundant

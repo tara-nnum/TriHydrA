@@ -624,6 +624,11 @@ The comparison exposes:
 - each component metric, value, tier, weight, and contribution; and
 - median biases and additional diagnostic comparisons.
 
+The comparison report presents the composite as
+`score / maximum assessable score = normalized percentage`, followed by its
+review classification. Tier 1 denotes strong disagreement, Tier 2 moderate
+disagreement and Tier 3 close agreement.
+
 ### Interactive figures
 
 The Layer 2 overview includes annual flow behaviour, annual response indices,

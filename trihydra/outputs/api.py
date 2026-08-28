@@ -65,7 +65,11 @@ def _available_station_files(directory: Path, station_id: str) -> list[str]:
     paths = {path.name for path in directory.iterdir() if path.is_file()}
     paths.add("summary.txt")
     root = directory.parent
-    for shared_name in ("network_summary.txt", "trihydra_network_summary.nc"):
+    for shared_name in (
+        "network_summary.txt",
+        "station_assessment_status.txt",
+        "trihydra_network_summary.nc",
+    ):
         if (root / shared_name).is_file():
             paths.add(f"../{shared_name}")
     station_netcdf = root / "stations" / f"{station_id}.nc"

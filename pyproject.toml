@@ -4,9 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trihydra"
-version = "0.5.0"
+version = "0.5.2"
 description = "Layered plausibility assessment for streamflow time series"
 readme = "README.md"
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+]
 requires-python = ">=3.11"
 dependencies = [
     "numpy",

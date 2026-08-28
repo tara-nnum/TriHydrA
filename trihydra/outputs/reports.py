@@ -295,4 +295,103 @@ def render_network_summary(
     return "\n".join(lines + ["", line("="), ""])
 
 
-__all__ = ["render_evidence_report", "render_network_summary", "render_station_summary"]
+def render_station_assessment_status(
+    manifest: pd.DataFrame,
+    summary: pd.DataFrame | None,
+) -> str:
+    """Render the always-written tab-delimited station assessment index."""
+    manifest = pd.DataFrame() if manifest is None else manifest.copy()
+    summary = pd.DataFrame() if summary is None else summary.copy()
+
+    station_ids = list(dict.fromkeys(
+        manifest.get("station_id", pd.Series(dtype=str)).dropna().astype(str)
+    ))
+    run_status = {
+        str(row["station_id"]): str(row.get("status", "not_assessed"))
+        for _, row in manifest.iterrows()
+        if pd.notna(row.get("station_id"))
+    }
+
+    def assessment(value: object) -> str:
+        label = str(value).strip().casefold()
+        if label in {"needs review", "review"}:
+            return "Needs review"
+        if label == "minor concerns":
+            return "Minor concerns"
+        if label in {"no review needed", "no review required"}:
+            return "No review required"
+        return "Not assessed"
+
+    assessed = summary.copy()
+    if not assessed.empty:
+        assessed["_assessment"] = assessed.get(
+            "layer1_class", pd.Series(index=assessed.index, dtype=object)
+        ).map(assessment)
+    series_names = list(dict.fromkeys(
+        assessed.get("series_name", pd.Series(dtype=str)).dropna().astype(str)
+    ))
+    if len(series_names) > 2:
+        series_names = series_names[:2]
+    while len(series_names) < 2:
+        series_names.append("")
+
+    series_labels: dict[str, str] = {}
+    for series_name in series_names:
+        if not series_name:
+            continue
+        label = series_name
+        if series_name.casefold() in {"series1", "series2"} and "series_role" in assessed:
+            roles = assessed.loc[
+                assessed["series_name"].astype(str).eq(series_name), "series_role"
+            ].dropna().astype(str)
+            if not roles.empty and roles.iloc[0].strip():
+                label = roles.iloc[0].strip()
+        series_labels[series_name] = label
+
+    completed = sum(status == "completed" for status in run_status.values())
+    failed = sum(status == "failed" for status in run_status.values())
+    skipped = sum(status == "skipped" for status in run_status.values())
+    assessment_counts = (
+        assessed["_assessment"].value_counts() if "_assessment" in assessed else pd.Series(dtype=int)
+    )
+    lines = [
+        "TRIHYDRA STATION ASSESSMENT STATUS",
+        "",
+        f"Total requested:\t{len(station_ids)}",
+        f"Completed:\t{completed}",
+        f"Station-series assessments:\t{len(assessed)}",
+        f"Needs review:\t{int(assessment_counts.get('Needs review', 0))}",
+        f"Minor concerns:\t{int(assessment_counts.get('Minor concerns', 0))}",
+        f"No review required:\t{int(assessment_counts.get('No review required', 0))}",
+        f"Failed:\t{failed}",
+        f"Skipped:\t{skipped}",
+        "",
+        "station_id\trun_status\tseries1\tseries1_assessment\tseries2\tseries2_assessment",
+    ]
+    for station_id in station_ids:
+        rows = assessed.loc[
+            assessed.get("station_id", pd.Series(index=assessed.index, dtype=str)).astype(str)
+            == station_id
+        ] if not assessed.empty else pd.DataFrame()
+        values = {
+            str(row.get("series_name", "")): str(row.get("_assessment", "Not assessed"))
+            for _, row in rows.iterrows()
+        }
+        first, second = series_names
+        lines.append("\t".join([
+            station_id,
+            run_status.get(station_id, "not_assessed"),
+            series_labels.get(first, first),
+            values.get(first, "Not assessed") if first else "",
+            series_labels.get(second, second),
+            values.get(second, "Not assessed") if second else "",
+        ]))
+    return "\n".join(lines) + "\n"
+
+
+__all__ = [
+    "render_evidence_report",
+    "render_network_summary",
+    "render_station_assessment_status",
+    "render_station_summary",
+]
